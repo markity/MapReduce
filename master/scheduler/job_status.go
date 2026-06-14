@@ -29,6 +29,7 @@ type jobStatus struct {
 	JobName        string
 	PluginUniqueID string
 	PluginFilePath string
+	Conf           map[string]string
 	NumReduceTasks int
 	JobStage       entity.JobStageCode
 	CreatedAt      time.Time

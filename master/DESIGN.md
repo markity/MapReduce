@@ -1040,13 +1040,13 @@ if err := os.Remove(plugin.FilePath); err != nil && !errors.Is(err, os.ErrNotExi
 Endpoint:
 
 ```http
-POST /client-api/upload-plugin/:plugin_id
+POST /client-api/upload-plugin/:plugin_name
 Body: binary blob
 ```
 
 流程：
 
-1. sanitize 用户传入的 plugin id。
+1. sanitize 用户传入的 plugin name。
 2. 生成 `PluginUniqueID`：
    ```text
    sanitizedUserID + "-" + tool.GitLikeRandomHex()
@@ -1077,7 +1077,7 @@ wc-7f91d4321bbc54d6e68884de434f3078a8d3f921
 
 ### 12.3 插件路径安全
 
-上传、删除和启动加载都会通过安全路径逻辑限制 plugin id：
+上传、删除和启动加载都会通过安全路径逻辑限制 plugin unique id：
 
 1. 不能为空。
 2. 不能包含路径分隔符。
@@ -1116,12 +1116,12 @@ job.PluginFilePath = plugin.FilePath
 Endpoint:
 
 ```http
-DELETE /client-api/plugin/:unique_id
+DELETE /client-api/plugin/:plugin_unique_id
 ```
 
 当前 delete API 只做软删除：
 
-1. 检查 plugin id 是否安全。
+1. 检查 plugin unique id 是否安全。
 2. 调用 `scheduler.DeletePlugin(uniqueID)`。
 3. 设置 `DeletedAt`。
 4. 从 list API 中隐藏。
@@ -1184,7 +1184,7 @@ Content-Type: application/octet-stream
 ### 14.1 Upload Plugin
 
 ```http
-POST /client-api/upload-plugin/:plugin_id
+POST /client-api/upload-plugin/:plugin_name
 Body: plugin binary
 ```
 
@@ -1194,20 +1194,21 @@ Body: plugin binary
 {
   "code": 0,
   "msg": "ok",
-  "plugin_unique_id": "wc-..."
+  "plugin_unique_id": "wc-...",
+  "plugin_name": "wc"
 }
 ```
 
 失败：
 
-1. plugin id 无效：HTTP 400 + `CodeBadRequest`
+1. plugin name 无效：HTTP 400 + `CodeBadRequest`
 2. 文件系统错误：HTTP 500 + `CodeInternalError`
 3. scheduler register 失败：HTTP 500 + `CodeInternalError`
 
 ### 14.2 Delete Plugin
 
 ```http
-DELETE /client-api/plugin/:unique_id
+DELETE /client-api/plugin/:plugin_unique_name
 ```
 
 成功：
@@ -1600,7 +1601,7 @@ const (
 ```go
 const (
     CodeOK = iota
-    CodeUploadPluginPluginIDInvalid
+    CodeUploadPluginPluginUniqueIDInvalid
     CodeDeletePluginPluginNotFound
     CodeFetchJobPluginJobNotFound
     CodeFetchJobPluginJobTerminated

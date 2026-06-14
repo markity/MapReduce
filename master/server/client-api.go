@@ -8,10 +8,10 @@ func (s *Server) registerClientApi() {
 	clientApi := s.engine.Group("/client-api")
 	{
 		// 上传插件
-		clientApi.POST("/upload-plugin/:plugin_id", clientapis.UploadPlugin(s.pluginStorePath))
+		clientApi.POST("/upload-plugin/:plugin_name", clientapis.UploadPlugin(s.pluginStorePath))
 
 		// 删除插件
-		clientApi.DELETE("/plugin/:unique_id", clientapis.DeletePlugin(s.pluginStorePath))
+		clientApi.DELETE("/plugin/:plugin_name", clientapis.DeletePlugin(s.pluginStorePath))
 
 		// 获取插件列表
 		clientApi.GET("/plugins/:order", clientapis.ListPlugins())
@@ -24,5 +24,8 @@ func (s *Server) registerClientApi() {
 
 		// 提交任务
 		clientApi.POST("/jobs", clientapis.CreateMapReduceJob())
+
+		// 获取master内部状态机快照
+		clientApi.GET("/master-state", clientapis.GetMasterState())
 	}
 }

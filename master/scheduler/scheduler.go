@@ -11,6 +11,7 @@ type Scheduler interface {
 	CreateMapReduceJob(*entity.CreateMapReduceJobInput) *entity.CreateMapReduceJobOutput
 	ListJobs() *entity.ListJobsOutput
 	GetJob(*entity.GetJobInput) *entity.GetJobOutput
+	GetMasterState() *entity.GetMasterStateOutput
 	// 如果没有job直接返回，也不去pin了, 如果job结束，返回job已经结束的错误代码，此时也不pin
 	//	唯一pin的情况就是job还在运行，此时plugin也一定还是没被物理删除的状态，可以pin
 	GetJobPluginFilePathAndPin(jobID string, pinSecret *string) GetJobPluginFilePathOutput
@@ -30,6 +31,7 @@ type schedulerImpl struct {
 	createJobInputChan chan *createMapReduceJobInput
 	listJobsInputChan  chan *listJobsInput
 	getJobInputChan    chan *getJobInput
+	getMasterStateChan chan *getMasterStateInput
 
 	// 获得job的filepath，用于fetch plugin blob接口使用
 	getJobPluginFilePathAndPinChan chan *getJobPluginFilePathAndPinInput
@@ -84,6 +86,7 @@ func newSchedulerImpl(plugins []pluginStatus, workerHeartbeatLostIntervalSeconds
 		createJobInputChan:             make(chan *createMapReduceJobInput),
 		listJobsInputChan:              make(chan *listJobsInput),
 		getJobInputChan:                make(chan *getJobInput),
+		getMasterStateChan:             make(chan *getMasterStateInput),
 		getJobPluginFilePathAndPinChan: make(chan *getJobPluginFilePathAndPinInput),
 		unpinJobPluginChan:             make(chan *unpinJobPluginInput),
 		registerPluginChan:             make(chan *registerPluginInput),
@@ -118,6 +121,8 @@ func (impl *schedulerImpl) runLoopForever() {
 			impl.handleListJobsInput(listJobsInput)
 		case getJobInput := <-impl.getJobInputChan:
 			impl.handleGetJobInput(getJobInput)
+		case getMasterStateInput := <-impl.getMasterStateChan:
+			impl.handleGetMasterStateInput(getMasterStateInput)
 		case getJobPluginFilePathInput := <-impl.getJobPluginFilePathAndPinChan:
 			impl.handleGetJobPluginFilePathInput(getJobPluginFilePathInput)
 		case unpinInput := <-impl.unpinJobPluginChan:

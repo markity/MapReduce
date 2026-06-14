@@ -4,7 +4,7 @@ import (
 	"fmt"
 	mrplugin "mapreduce/plugin"
 	"os"
-	"os/exec"
+	"plugin"
 	stdplugin "plugin"
 )
 
@@ -23,13 +23,8 @@ func init() {
 }
 
 func validatePluginLoadable(path string) error {
-	cmd := exec.Command(os.Args[0])
-	cmd.Env = append(os.Environ(), validatePluginPathEnv+"="+path)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("plugin is not loadable: %w: %s", err, string(output))
-	}
-	return nil
+	_, err := plugin.Open(path)
+	return err
 }
 
 func validatePluginLoadableInProcess(path string) error {

@@ -7,12 +7,6 @@ const (
 	TaskReportFailed    TaskReportStatus = "failed"
 )
 
-type TaskAttemptKey struct {
-	JobID     string `json:"job_id"`
-	TaskID    string `json:"task_id"`
-	AttemptID string `json:"attempt_id"`
-}
-
 type TaskReport struct {
 	TaskAttemptKey
 	TaskType TaskType         `json:"task_type"`

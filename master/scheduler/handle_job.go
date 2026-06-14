@@ -78,6 +78,15 @@ func (impl *schedulerImpl) handleCreateMapReduceJobInput(input *createMapReduceJ
 		return
 	}
 	pluginFilePath = plugin.FilePath
+	splits := input.Req.TaskSplits
+	var err error
+	if len(splits) == 0 {
+		splits, err = generateJobSplits(pluginFilePath, input.Req.Conf)
+		if err != nil {
+			input.C <- &entity.CreateMapReduceJobOutput{Code: entity.CreateMapReduceJobCodeInternalError}
+			return
+		}
+	}
 
 	jobID := makeJobID(impl.nextJobSeq)
 	impl.nextJobSeq++
@@ -87,6 +96,7 @@ func (impl *schedulerImpl) handleCreateMapReduceJobInput(input *createMapReduceJ
 		JobName:                input.Req.JobName,
 		PluginUniqueID:         input.Req.PluginUniqueID,
 		PluginFilePath:         pluginFilePath,
+		Conf:                   cloneStringMap(input.Req.Conf),
 		NumReduceTasks:         input.Req.NumReduceTasks,
 		JobStage:               entity.JobStageCodeMapping,
 		CreatedAt:              now,
@@ -102,7 +112,7 @@ func (impl *schedulerImpl) handleCreateMapReduceJobInput(input *createMapReduceJ
 		LastError:              "",
 	}
 	impl.jobStatus[jobID] = job
-	impl.materializeJobTasks(job, input.Req.TaskSplits)
+	impl.materializeJobTasks(job, splits)
 	impl.refreshRunnableJob(job)
 
 	input.C <- &entity.CreateMapReduceJobOutput{
@@ -187,6 +197,14 @@ func (j *jobStatus) toJobInfo() entity.JobInfo {
 func (j *jobStatus) toJobInfoPtr() *entity.JobInfo {
 	info := j.toJobInfo()
 	return &info
+}
+
+func cloneStringMap(in map[string]string) map[string]string {
+	out := make(map[string]string, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
 }
 
 type createMapReduceJobInput struct {

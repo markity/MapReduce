@@ -6,7 +6,7 @@ const (
 	CodeOK = iota
 
 	// client upload-plugin接口
-	CodeUploadPluginPluginIDInvalid
+	CodeUploadPluginPluginNameInvalid
 
 	// delete plugin接口
 	CodeDeletePluginPluginNotFound
@@ -31,7 +31,7 @@ const (
 var codeToMsg map[Code]string = map[Code]string{
 	CodeOK: "ok",
 
-	CodeUploadPluginPluginIDInvalid: "plugin id is invalid",
+	CodeUploadPluginPluginNameInvalid: "plugin name is invalid",
 
 	CodeDeletePluginPluginNotFound: "plugin not found",
 

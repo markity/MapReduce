@@ -16,6 +16,7 @@ type CreateMapReduceJobInput struct {
 	JobName        string
 	PluginUniqueID string
 	NumReduceTasks int
+	Conf           map[string]string
 	TaskSplits     []SplitSpec
 }
 

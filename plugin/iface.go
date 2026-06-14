@@ -17,6 +17,10 @@ type InputFormat interface {
 	) (RecordReader, error)
 }
 
+type SplitFactory interface {
+	NewSplit(kind string) (Split, error)
+}
+
 type RecordReader interface {
 	Next() bool
 	Key() string

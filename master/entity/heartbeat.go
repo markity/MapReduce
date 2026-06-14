@@ -12,22 +12,6 @@ const (
 	HeartbeatOutputCodeInternalError HeartbeatOutputCode = CodeInternalError
 )
 
-type TaskAttemptKey struct {
-	JobID     string
-	TaskID    string
-	AttemptID string
-}
-
-type TaskSlotAssigned struct {
-	TaskAttemptKey
-	TaskType TaskType
-}
-
-type TaskSlotStatus struct {
-	SlotID             string
-	CurrentRunningTask *TaskSlotAssigned
-}
-
 type HeartbeatInput struct {
 	WorkerUniqueID string
 	WorkerEpoch    int64

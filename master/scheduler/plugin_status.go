@@ -80,11 +80,11 @@ func pluginStatusMapFromSlice(plugins []pluginStatus) map[string]*pluginStatus {
 	return result
 }
 
-func safePluginPath(pluginStorePath string, pluginUniqueID string) (string, bool) {
-	if pluginUniqueID == "" || filepath.Base(pluginUniqueID) != pluginUniqueID {
+func safePluginPath(pluginStorePath string, pluginName string) (string, bool) {
+	if pluginName == "" || filepath.Base(pluginName) != pluginName {
 		return "", false
 	}
-	path := filepath.Join(pluginStorePath, pluginUniqueID)
+	path := filepath.Join(pluginStorePath, pluginName)
 	cleanStorePath := filepath.Clean(pluginStorePath)
 	cleanPath := filepath.Clean(path)
 	if cleanPath != filepath.Join(cleanStorePath, filepath.Base(cleanPath)) {

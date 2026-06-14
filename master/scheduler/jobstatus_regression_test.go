@@ -11,9 +11,9 @@ func newRegressionScheduler() *schedulerImpl {
 
 func createRegressionJob(t *testing.T, impl *schedulerImpl, splits int, reduces int) *entity.CreateMapReduceJobOutput {
 	t.Helper()
-	pluginUniqueID := "plugin-regression"
-	impl.pluginStatus[pluginUniqueID] = &pluginStatus{
-		PluginUniqueID: pluginUniqueID,
+	pluginName := "plugin-regression"
+	impl.pluginStatus[pluginName] = &pluginStatus{
+		PluginUniqueID: pluginName,
 		FilePath:       "/tmp/plugin-regression",
 		Pin:            make(map[string]struct{}),
 	}
@@ -23,7 +23,7 @@ func createRegressionJob(t *testing.T, impl *schedulerImpl, splits int, reduces 
 	}
 	resp := impl.CreateMapReduceJob(&entity.CreateMapReduceJobInput{
 		JobName:        "regression",
-		PluginUniqueID: pluginUniqueID,
+		PluginUniqueID: pluginName,
 		NumReduceTasks: reduces,
 		TaskSplits:     taskSplits,
 	})
@@ -224,6 +224,44 @@ func TestDuplicateHeartbeatSeqIsRejected(t *testing.T) {
 	}
 	if len(second.AssignedTasks) != 0 {
 		t.Fatalf("duplicate heartbeat assigned tasks len = %d, want 0", len(second.AssignedTasks))
+	}
+}
+
+func TestMissingReportedSlotIsNotAssignable(t *testing.T) {
+	impl := newRegressionScheduler()
+	_ = createRegressionJob(t, impl, 3, 1)
+
+	first := impl.PostHeartbeatReq(&entity.HeartbeatInput{
+		WorkerUniqueID: "worker-1",
+		WorkerEpoch:    1,
+		WorkerAddr:     "127.0.0.1:9000",
+		Seq:            1,
+		SlotStatus: map[string]entity.TaskSlotStatus{
+			"slot-1": {SlotID: "slot-1"},
+			"slot-2": {SlotID: "slot-2"},
+		},
+	})
+	if len(first.AssignedTasks) != 2 {
+		t.Fatalf("first assigned tasks len = %d, want 2", len(first.AssignedTasks))
+	}
+
+	second := impl.PostHeartbeatReq(&entity.HeartbeatInput{
+		WorkerUniqueID: "worker-1",
+		WorkerEpoch:    1,
+		WorkerAddr:     "127.0.0.1:9000",
+		Seq:            2,
+		SlotStatus: map[string]entity.TaskSlotStatus{
+			"slot-1": {SlotID: "slot-1"},
+		},
+	})
+	if len(second.AssignedTasks) != 1 {
+		t.Fatalf("second assigned tasks len = %d, want 1", len(second.AssignedTasks))
+	}
+	if second.AssignedTasks[0].SlotID != "slot-1" {
+		t.Fatalf("assigned slot = %q, want slot-1", second.AssignedTasks[0].SlotID)
+	}
+	if _, ok := impl.workerStatus["worker-1"].FreeSlots["slot-2"]; ok {
+		t.Fatalf("missing reported slot-2 should not be free/assignable")
 	}
 }
 

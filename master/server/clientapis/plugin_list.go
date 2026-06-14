@@ -6,6 +6,7 @@ import (
 	clientcall "mapreduce/rpc/master/client-call"
 	"net/http"
 	"sort"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -21,7 +22,7 @@ func ListPlugins() gin.HandlerFunc {
 			})
 			return
 		}
-		c.JSON(http.StatusOK, okListPluginsResp(pluginUniqueIDs(plugins)))
+		c.JSON(http.StatusOK, okListPluginsResp(plugins))
 	}
 }
 
@@ -41,7 +42,7 @@ func sortPluginSnapshots(plugins []scheduler.PluginSnapshot, order string) bool 
 	return true
 }
 
-func pluginUniqueIDs(plugins []scheduler.PluginSnapshot) []string {
+func pluginNames(plugins []scheduler.PluginSnapshot) []string {
 	out := make([]string, 0, len(plugins))
 	for _, plugin := range plugins {
 		out = append(out, plugin.PluginUniqueID)
@@ -49,15 +50,32 @@ func pluginUniqueIDs(plugins []scheduler.PluginSnapshot) []string {
 	return out
 }
 
-func okListPluginsResp(plugins []string) clientcall.ListPluginsResp {
-	if plugins == nil {
-		plugins = make([]string, 0)
+func okListPluginsResp(plugins []scheduler.PluginSnapshot) clientcall.ListPluginsResp {
+	names := pluginNames(plugins)
+	pluginInfos := pluginInfosFromSnapshots(plugins)
+	if names == nil {
+		names = make([]string, 0)
+	}
+	if pluginInfos == nil {
+		pluginInfos = make([]clientcall.PluginInfo, 0)
 	}
 	return clientcall.ListPluginsResp{
 		RespComm: comm.RespComm{
 			Code: comm.CodeOK,
 			Msg:  comm.GetMsgFromCode(comm.CodeOK),
 		},
-		Plugins: plugins,
+		Plugins:     names,
+		PluginInfos: pluginInfos,
 	}
+}
+
+func pluginInfosFromSnapshots(plugins []scheduler.PluginSnapshot) []clientcall.PluginInfo {
+	out := make([]clientcall.PluginInfo, 0, len(plugins))
+	for _, plugin := range plugins {
+		out = append(out, clientcall.PluginInfo{
+			PluginUniqueID: plugin.PluginUniqueID,
+			UploadedAt:     plugin.ModTime.Format(time.RFC3339Nano),
+		})
+	}
+	return out
 }

@@ -11,8 +11,8 @@ import (
 
 func DeletePlugin(pluginStorePath string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		uniqueID := c.Param("unique_id")
-		if _, ok := pluginPath(pluginStorePath, uniqueID); !ok {
+		pluginName := c.Param("plugin_unique_id")
+		if _, ok := pluginPath(pluginStorePath, pluginName); !ok {
 			c.JSON(http.StatusBadRequest, comm.RespComm{
 				Code: comm.CodeBadRequest,
 				Msg:  comm.GetMsgFromCode(comm.CodeBadRequest),
@@ -21,7 +21,7 @@ func DeletePlugin(pluginStorePath string) gin.HandlerFunc {
 		}
 
 		schedulerInstance := scheduler.GetScheduler()
-		ok, err := schedulerInstance.DeletePlugin(uniqueID)
+		ok, err := schedulerInstance.DeletePlugin(pluginName)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, comm.RespComm{
 				Code: comm.CodeInternalError,

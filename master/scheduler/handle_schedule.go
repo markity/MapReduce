@@ -101,6 +101,10 @@ func (impl *schedulerImpl) buildAssignedTask(taskAttemptKey entity.TaskAttemptKe
 		TaskType:       task.TaskType,
 	}
 	job := impl.jobStatus[task.JobID]
+	if job != nil {
+		assignedTask.Plugin = entity.PluginSpec{Type: entity.FromMaster}
+		assignedTask.Conf = cloneStringMap(job.Conf)
+	}
 	if task.TaskType == entity.TaskTypeReduce {
 		reduceTask := &entity.ReduceTaskSpec{
 			ReducePartitionID: reducePartitionIDFromTask(task),

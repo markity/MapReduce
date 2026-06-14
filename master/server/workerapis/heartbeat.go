@@ -5,6 +5,7 @@ import (
 	"log"
 	"mapreduce/master/entity"
 	"mapreduce/master/scheduler"
+	"mapreduce/rpc/comm"
 	rpccomm "mapreduce/rpc/comm"
 	workercall "mapreduce/rpc/master/worker-call"
 	"net/http"
@@ -119,24 +120,44 @@ func reduceTaskFromEntity(task *entity.ReduceTaskSpec) *rpccomm.ReduceTaskSpec {
 	}
 }
 
-func assignedTaskFromEntity(task entity.AssignedTask) workercall.AssignTask {
-	return workercall.AssignTask{
+func assignedTaskFromEntity(task entity.AssignedTask) comm.AssignTask {
+	return comm.AssignTask{
+		TaskAttemptKey: rpccomm.TaskAttemptKey{
+			JobID:     task.JobID,
+			TaskID:    task.TaskID,
+			AttemptID: task.AttemptID,
+		},
 		SlotID:     task.SlotID,
-		JobID:      task.JobID,
-		TaskID:     task.TaskID,
-		AttemptID:  task.AttemptID,
 		TaskType:   rpccomm.TaskType(task.TaskType),
+		Plugin:     pluginSpecFromEntity(task.Plugin),
+		Conf:       cloneStringMap(task.Conf),
 		MapTask:    mapTaskFromEntity(task.MapTask),
 		ReduceTask: reduceTaskFromEntity(task.ReduceTask),
 	}
 }
 
-func assignedTasksFromEntity(tasks []entity.AssignedTask) []workercall.AssignTask {
-	rpcTasks := make([]workercall.AssignTask, 0, len(tasks))
+func pluginSpecFromEntity(plugin entity.PluginSpec) rpccomm.PluginSpec {
+	return rpccomm.PluginSpec{
+		Type:   rpccomm.PluginSpecType(plugin.Type),
+		URI:    plugin.URI,
+		SHA256: plugin.SHA256,
+	}
+}
+
+func assignedTasksFromEntity(tasks []entity.AssignedTask) []comm.AssignTask {
+	rpcTasks := make([]comm.AssignTask, 0, len(tasks))
 	for _, task := range tasks {
 		rpcTasks = append(rpcTasks, assignedTaskFromEntity(task))
 	}
 	return rpcTasks
+}
+
+func cloneStringMap(in map[string]string) map[string]string {
+	out := make(map[string]string, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
 }
 
 func taskTypeToEntity(taskType rpccomm.TaskType) entity.TaskType {
@@ -151,7 +172,7 @@ func taskTypeToEntity(taskType rpccomm.TaskType) entity.TaskType {
 	return entity.TaskType("")
 }
 
-func runningTaskToEntity(task *rpccomm.RunningTask) *entity.TaskSlotAssigned {
+func runningTaskToEntity(task *rpccomm.TaskSlotStatusReportRunningTask) *entity.TaskSlotAssigned {
 	if task == nil {
 		return nil
 	}
@@ -165,7 +186,7 @@ func runningTaskToEntity(task *rpccomm.RunningTask) *entity.TaskSlotAssigned {
 	}
 }
 
-func taskSlotsToEntity(slots map[string]rpccomm.TaskSlotStatus) map[string]entity.TaskSlotStatus {
+func taskSlotsToEntity(slots map[string]rpccomm.TaskSlotStatusReport) map[string]entity.TaskSlotStatus {
 	entitySlots := make(map[string]entity.TaskSlotStatus, len(slots))
 	for key, slot := range slots {
 		entitySlots[key] = entity.TaskSlotStatus{
@@ -234,7 +255,7 @@ func validHeartbeatReq(req *workercall.HeartbeatReq) bool {
 	return true
 }
 
-func validRunningTaskStatus(task *rpccomm.RunningTask) bool {
+func validRunningTaskStatus(task *rpccomm.TaskSlotStatusReportRunningTask) bool {
 	return task.JobID != "" &&
 		task.TaskID != "" &&
 		task.AttemptID != "" &&
@@ -316,6 +337,7 @@ func heartbeatRespFromEntity(resp *entity.HeartbeatOutput) *workercall.Heartbeat
 
 func Heartbeat() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		fmt.Println("heartbeat")
 		var heartbeatReq workercall.HeartbeatReq
 		err := c.BindJSON(&heartbeatReq)
 		if err != nil {

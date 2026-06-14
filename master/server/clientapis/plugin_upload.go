@@ -16,12 +16,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const randomPluginIDSuffixBytes = 32
+const randomPluginNameSuffixBytes = 32
 
 func UploadPlugin(pluginStorePath string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userPluginID := sanitizePluginID(c.Param("plugin_id"))
-		if userPluginID == "" {
+		pluginName := sanitizePluginName(c.Param("plugin_name"))
+		if pluginName == "" {
 			c.JSON(http.StatusBadRequest, comm.RespComm{
 				Code: comm.CodeBadRequest,
 				Msg:  comm.GetMsgFromCode(comm.CodeBadRequest),
@@ -37,7 +37,7 @@ func UploadPlugin(pluginStorePath string) gin.HandlerFunc {
 			return
 		}
 
-		uniqueID, path, err := newPluginPath(pluginStorePath, userPluginID)
+		generatedPluginUniqueID, path, err := newPluginPath(pluginStorePath, pluginName)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, comm.RespComm{
 				Code: comm.CodeInternalError,
@@ -84,7 +84,7 @@ func UploadPlugin(pluginStorePath string) gin.HandlerFunc {
 			})
 			return
 		}
-		if !scheduler.GetScheduler().RegisterPlugin(uniqueID, path) {
+		if !scheduler.GetScheduler().RegisterPlugin(generatedPluginUniqueID, path) {
 			_ = os.Remove(path)
 			c.JSON(http.StatusInternalServerError, comm.RespComm{
 				Code: comm.CodeInternalError,
@@ -98,32 +98,32 @@ func UploadPlugin(pluginStorePath string) gin.HandlerFunc {
 				Code: comm.CodeOK,
 				Msg:  comm.GetMsgFromCode(comm.CodeOK),
 			},
-			PluginUniqueID: uniqueID,
+			PluginUniqueID: generatedPluginUniqueID,
 		})
 	}
 }
 
-func newPluginPath(pluginStorePath string, userPluginID string) (string, string, error) {
+func newPluginPath(pluginStorePath string, pluginName string) (string, string, error) {
 	for i := 0; i < 16; i++ {
-		uniqueID := userPluginID + "-" + tool.GitLikeRandomHex(32)
-		path, ok := pluginPath(pluginStorePath, uniqueID)
+		generatedPluginName := pluginName + "-" + tool.GitLikeRandomHex(32)
+		path, ok := pluginPath(pluginStorePath, generatedPluginName)
 		if !ok {
-			return "", "", errors.New("generated invalid plugin id")
+			return "", "", errors.New("generated invalid plugin name")
 		}
 		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-			return uniqueID, path, nil
+			return generatedPluginName, path, nil
 		} else if err != nil {
 			return "", "", err
 		}
 	}
-	return "", "", errors.New("failed to allocate unique plugin id")
+	return "", "", errors.New("failed to allocate unique plugin name")
 }
 
-func pluginPath(pluginStorePath string, uniqueID string) (string, bool) {
-	if sanitizePluginID(uniqueID) != uniqueID {
+func pluginPath(pluginStorePath string, pluginName string) (string, bool) {
+	if sanitizePluginName(pluginName) != pluginName {
 		return "", false
 	}
-	path := filepath.Join(pluginStorePath, uniqueID)
+	path := filepath.Join(pluginStorePath, pluginName)
 	cleanStorePath := filepath.Clean(pluginStorePath)
 	cleanPath := filepath.Clean(path)
 	if cleanPath != filepath.Join(cleanStorePath, filepath.Base(cleanPath)) {
@@ -132,13 +132,13 @@ func pluginPath(pluginStorePath string, uniqueID string) (string, bool) {
 	return cleanPath, true
 }
 
-func sanitizePluginID(pluginID string) string {
-	pluginID = strings.TrimSpace(pluginID)
-	if pluginID == "" {
+func sanitizePluginName(pluginName string) string {
+	pluginName = strings.TrimSpace(pluginName)
+	if pluginName == "" {
 		return ""
 	}
 	var b strings.Builder
-	for _, r := range pluginID {
+	for _, r := range pluginName {
 		switch {
 		case unicode.IsLetter(r), unicode.IsDigit(r), r == '-', r == '_', r == '.':
 			b.WriteRune(r)

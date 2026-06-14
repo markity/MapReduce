@@ -29,30 +29,15 @@ func (impl *schedulerImpl) updateWorkerSlotSnapshot(worker *workerStatus, slots 
 	return shouldStopAttempts
 }
 
-// heartbeat可能持有之前workerStatus不存在的slots，比如worker扩容，此时对workerStatus的对应slot标记成free slot，如果没有slot则创建slot
+// heartbeat可能持有之前workerStatus不存在的slots，比如worker扩容，此时只注册slot。
+// 是否free/busy必须以本次真实上报的snapshot为准，不能在这里提前放入FreeSlots。
 func (impl *schedulerImpl) workerExpandSlotsByReportedSlots(worker *workerStatus, reportedSlots map[string]entity.TaskSlotStatus) {
 	for _, reported := range reportedSlots {
-		if _, ok := worker.AllSlots[reported.SlotID]; !ok {
-			// markSlotFree会先ensure slot再make free
-			worker.markSlotFree(reported.SlotID)
+		if reported.SlotID == "" {
+			continue
 		}
+		worker.ensureSlot(reported.SlotID)
 	}
-}
-
-// heartbeat上报的slots可能不持有worker之前存在的slots，比如worker缩容，此时对req的对应slot标记为free slot
-func (impl *schedulerImpl) reportedSlotsExpandByWorkerSlots(worker *workerStatus, reportedSlots map[string]entity.TaskSlotStatus) map[string]entity.TaskSlotStatus {
-	result := make(map[string]entity.TaskSlotStatus)
-	for _, workerSlot := range worker.AllSlots {
-		if r, ok := reportedSlots[workerSlot.SlotID]; !ok {
-			result[workerSlot.SlotID] = entity.TaskSlotStatus{
-				SlotID:             workerSlot.SlotID,
-				CurrentRunningTask: nil,
-			}
-		} else {
-			result[workerSlot.SlotID] = r
-		}
-	}
-	return result
 }
 
 // diff重新调度任务, 返回需要停止的attempt
@@ -310,8 +295,6 @@ func (impl *schedulerImpl) handleHeartbeatInput(heartbeatInput *heartbeatReqInpu
 	if req.WorkerEpoch > worker.Epoch {
 		// 可能上报新槽，这里扩展worker的slot槽位
 		impl.workerExpandSlotsByReportedSlots(worker, req.SlotStatus)
-		// worker上报的slot可能少了之前的某个槽位
-		req.SlotStatus = impl.reportedSlotsExpandByWorkerSlots(worker, req.SlotStatus)
 
 		// 处理宕机，需要重新调度之前分配在上面的任务，并且重新生成worker slot资源
 		// 	认为该机器上的所有任务全部失败，重新requeue，重新建立workerStatus
@@ -327,8 +310,6 @@ func (impl *schedulerImpl) handleHeartbeatInput(heartbeatInput *heartbeatReqInpu
 
 	// 可能上报新槽，这里扩展worker的slot槽位
 	impl.workerExpandSlotsByReportedSlots(worker, req.SlotStatus)
-	// worker上报的slot可能少了之前的某个槽位
-	req.SlotStatus = impl.reportedSlotsExpandByWorkerSlots(worker, req.SlotStatus)
 
 	// 先处理 reports，再处理 slot snapshot。否则 worker 在同一轮心跳里上报
 	// “任务已完成 + 槽已空闲”时，master 会先把旧 running task 误判为 lost。

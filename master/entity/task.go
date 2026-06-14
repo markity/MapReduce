@@ -15,3 +15,19 @@ const (
 	JobStageCodeSucceeded JobStageCode = "succeed"
 	JobStageCodeKilled    JobStageCode = "killed"
 )
+
+type TaskAttemptKey struct {
+	JobID     string
+	TaskID    string
+	AttemptID string
+}
+
+type TaskSlotAssigned struct {
+	TaskAttemptKey
+	TaskType TaskType
+}
+
+type TaskSlotStatus struct {
+	SlotID             string
+	CurrentRunningTask *TaskSlotAssigned
+}

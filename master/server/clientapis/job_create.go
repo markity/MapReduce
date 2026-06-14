@@ -37,23 +37,24 @@ func CreateMapReduceJob() gin.HandlerFunc {
 }
 
 func validCreateMapReduceJobReq(req *clientcall.CreateMapReduceJobReq) bool {
-	return req.PluginUniqueID != "" && len(req.TaskSplits) > 0 && req.NumReduceTasks > 0
+	return req.PluginUniqueID != "" && req.NumReduceTasks > 0
 }
 
 func createJobReqToEntity(req *clientcall.CreateMapReduceJobReq) *entity.CreateMapReduceJobInput {
-	taskSplits := make([]entity.SplitSpec, 0, len(req.TaskSplits))
-	for _, split := range req.TaskSplits {
-		taskSplits = append(taskSplits, entity.SplitSpec{
-			SplitType: string(split.SplitType),
-			Data:      split.Data,
-		})
-	}
 	return &entity.CreateMapReduceJobInput{
 		JobName:        req.JobName,
 		PluginUniqueID: req.PluginUniqueID,
 		NumReduceTasks: req.NumReduceTasks,
-		TaskSplits:     taskSplits,
+		Conf:           cloneStringMap(req.Conf),
 	}
+}
+
+func cloneStringMap(in map[string]string) map[string]string {
+	out := make(map[string]string, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
 }
 
 func createJobRespFromEntity(resp *entity.CreateMapReduceJobOutput) *clientcall.CreateMapReduceJobResp {

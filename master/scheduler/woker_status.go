@@ -96,6 +96,13 @@ func (w *workerStatus) resetSlotAvailability() {
 	w.BusySlots = make(map[string]struct{})
 }
 
+func (w *workerStatus) forgetReportedSlotAvailability() {
+	w.resetSlotAvailability()
+	for _, slot := range w.AllSlots {
+		slot.CurrentRunningTask = nil
+	}
+}
+
 func (w *workerStatus) markSlotFree(slotID string) {
 	slot := w.ensureSlot(slotID)
 	slot.CurrentRunningTask = nil
@@ -114,7 +121,7 @@ func (w *workerStatus) markSlotBusy(slotID string, taskType entity.TaskType, att
 }
 
 func (w *workerStatus) rebuildSlotSnapshot(slots map[string]entity.TaskSlotStatus) {
-	w.resetSlotAvailability()
+	w.forgetReportedSlotAvailability()
 	for _, slot := range slots {
 		taskAssign := taskSlotAssignedFromEntity(slot.CurrentRunningTask)
 		if taskAssign == nil {
