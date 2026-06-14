@@ -42,7 +42,7 @@ func sortPluginSnapshots(plugins []scheduler.PluginSnapshot, order string) bool 
 	return true
 }
 
-func pluginNames(plugins []scheduler.PluginSnapshot) []string {
+func pluginUniqueIDs(plugins []scheduler.PluginSnapshot) []string {
 	out := make([]string, 0, len(plugins))
 	for _, plugin := range plugins {
 		out = append(out, plugin.PluginUniqueID)
@@ -51,10 +51,10 @@ func pluginNames(plugins []scheduler.PluginSnapshot) []string {
 }
 
 func okListPluginsResp(plugins []scheduler.PluginSnapshot) clientcall.ListPluginsResp {
-	names := pluginNames(plugins)
+	pluginUniqueIDs := pluginUniqueIDs(plugins)
 	pluginInfos := pluginInfosFromSnapshots(plugins)
-	if names == nil {
-		names = make([]string, 0)
+	if pluginUniqueIDs == nil {
+		pluginUniqueIDs = make([]string, 0)
 	}
 	if pluginInfos == nil {
 		pluginInfos = make([]clientcall.PluginInfo, 0)
@@ -64,7 +64,7 @@ func okListPluginsResp(plugins []scheduler.PluginSnapshot) clientcall.ListPlugin
 			Code: comm.CodeOK,
 			Msg:  comm.GetMsgFromCode(comm.CodeOK),
 		},
-		Plugins:     names,
+		Plugins:     pluginUniqueIDs,
 		PluginInfos: pluginInfos,
 	}
 }

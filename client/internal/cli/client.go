@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"bytes"
@@ -8,10 +8,23 @@ import (
 	"mapreduce/rpc/comm"
 	"net/http"
 	"strings"
+	"time"
 )
 
-func doJSON(method string, path string, body []byte, out any) error {
-	req, err := http.NewRequest(method, endpoint(path), bytes.NewReader(body))
+type Client struct {
+	MasterAddr string
+	HTTPClient *http.Client
+}
+
+func NewClient(masterAddr string) *Client {
+	return &Client{
+		MasterAddr: masterAddr,
+		HTTPClient: &http.Client{Timeout: 30 * time.Second},
+	}
+}
+
+func (c *Client) DoJSON(method string, path string, body []byte, out any) error {
+	req, err := http.NewRequest(method, c.endpoint(path), bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
@@ -19,7 +32,7 @@ func doJSON(method string, path string, body []byte, out any) error {
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	resp, err := httpClient.Do(req)
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -43,8 +56,8 @@ func doJSON(method string, path string, body []byte, out any) error {
 	return nil
 }
 
-func endpoint(path string) string {
-	base := strings.TrimRight(masterAddr, "/")
+func (c *Client) endpoint(path string) string {
+	base := strings.TrimRight(c.MasterAddr, "/")
 	if base != "" && !strings.Contains(base, "://") {
 		base = "http://" + base
 	}

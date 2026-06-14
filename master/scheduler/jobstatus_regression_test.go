@@ -11,9 +11,9 @@ func newRegressionScheduler() *schedulerImpl {
 
 func createRegressionJob(t *testing.T, impl *schedulerImpl, splits int, reduces int) *entity.CreateMapReduceJobOutput {
 	t.Helper()
-	pluginName := "plugin-regression"
-	impl.pluginStatus[pluginName] = &pluginStatus{
-		PluginUniqueID: pluginName,
+	pluginUniqueID := "plugin-regression"
+	impl.pluginStatus[pluginUniqueID] = &pluginStatus{
+		PluginUniqueID: pluginUniqueID,
 		FilePath:       "/tmp/plugin-regression",
 		Pin:            make(map[string]struct{}),
 	}
@@ -23,7 +23,7 @@ func createRegressionJob(t *testing.T, impl *schedulerImpl, splits int, reduces 
 	}
 	resp := impl.CreateMapReduceJob(&entity.CreateMapReduceJobInput{
 		JobName:        "regression",
-		PluginUniqueID: pluginName,
+		PluginUniqueID: pluginUniqueID,
 		NumReduceTasks: reduces,
 		TaskSplits:     taskSplits,
 	})

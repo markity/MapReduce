@@ -6,10 +6,10 @@ import "mapreduce/rpc/comm"
 type UploadPluginResp struct {
 	comm.RespComm
 
-	PluginUniqueID string `json:"plugin_unique_id"` // backward compatibility
+	PluginUniqueID string `json:"plugin_unique_id"`
 }
 
-// url: Delete /client/plugin/{pluginName}
+// url: Delete /client/plugin/{pluginUniqueID}
 type DeletePluginResp struct {
 	comm.RespComm
 }
@@ -18,19 +18,19 @@ type DeletePluginResp struct {
 type ListPluginsResp struct {
 	comm.RespComm
 
-	Plugins     []string     `json:"plugins"` // plugin name list
+	Plugins     []string     `json:"plugins"` // plugin unique id list
 	PluginInfos []PluginInfo `json:"plugin_infos"`
 }
 
 type PluginInfo struct {
-	PluginUniqueID string `json:"plugin_unique_id"` // backward compatibility
+	PluginUniqueID string `json:"plugin_unique_id"`
 	UploadedAt     string `json:"uploaded_at"`
 }
 
 // url: Post /client/job，body为CreateMapReduceJobReq
 type CreateMapReduceJobReq struct {
 	JobName        string            `json:"job_name"`
-	PluginUniqueID string            `json:"plugin_unique_id,omitempty"` // backward compatibility
+	PluginUniqueID string            `json:"plugin_unique_id"`
 	NumReduceTasks int               `json:"num_reduce_tasks"`
 	Conf           map[string]string `json:"conf"`
 }
@@ -102,7 +102,7 @@ type MasterStateTaskAssign struct {
 }
 
 type MasterStatePluginInfo struct {
-	PluginUniqueID string `json:"plugin_unique_id,omitempty"` // backward compatibility
+	PluginUniqueID string `json:"plugin_unique_id"`
 	ModTime        string `json:"mod_time"`
 	PinCount       int    `json:"pin_count"`
 }

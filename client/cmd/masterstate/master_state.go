@@ -1,7 +1,8 @@
-package main
+package masterstate
 
 import (
 	"fmt"
+	"mapreduce/client/internal/cli"
 	clientcall "mapreduce/rpc/master/client-call"
 	"net/http"
 	"strings"
@@ -9,16 +10,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var masterStateCmd = &cobra.Command{
-	Use:   "master-state",
-	Short: "Get master internal state snapshot",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		var resp clientcall.GetMasterStateResp
-		if err := doJSON(http.MethodGet, "/client-api/master-state", nil, &resp); err != nil {
-			return err
-		}
-		return printMasterState(resp)
-	},
+func NewCommand(newClient func() *cli.Client) *cobra.Command {
+	return &cobra.Command{
+		Use:   "master-state",
+		Short: "Get master internal state snapshot",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var resp clientcall.GetMasterStateResp
+			if err := newClient().DoJSON(http.MethodGet, "/client-api/master-state", nil, &resp); err != nil {
+				return err
+			}
+			return printMasterState(resp)
+		},
+	}
 }
 
 func printMasterState(resp clientcall.GetMasterStateResp) error {
@@ -47,7 +50,7 @@ func printWorkers(workers []clientcall.MasterStateWorkerInfo) error {
 			worker.LastSeen,
 		})
 	}
-	return printTable([]string{"WORKER ID", "ADDR", "STATE", "EPOCH", "SEQ", "FREE", "BUSY", "LAST SEEN"}, rows)
+	return cli.PrintTable([]string{"WORKER-ID", "ADDR", "STATE", "EPOCH", "SEQ", "FREE", "BUSY", "LAST-SEEN"}, rows)
 }
 
 func printPlugins(plugins []clientcall.MasterStatePluginInfo) error {
@@ -59,7 +62,7 @@ func printPlugins(plugins []clientcall.MasterStatePluginInfo) error {
 			plugin.ModTime,
 		})
 	}
-	return printTable([]string{"PLUGIN-ID", "PINS", "MOD TIME"}, rows)
+	return cli.PrintTable([]string{"PLUGIN-ID", "PINS", "MOD-TIME"}, rows)
 }
 
 func printStateJobs(jobs []clientcall.MasterStateJobInfo) error {
@@ -72,5 +75,5 @@ func printStateJobs(jobs []clientcall.MasterStateJobInfo) error {
 			job.StartedAt,
 		})
 	}
-	return printTable([]string{"JOB ID", "NAME", "STATUS", "STARTED"}, rows)
+	return cli.PrintTable([]string{"JOB-ID", "NAME", "STATUS", "STARTED"}, rows)
 }

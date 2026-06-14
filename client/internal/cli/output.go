@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"fmt"
@@ -6,7 +6,7 @@ import (
 	"text/tabwriter"
 )
 
-func printTable(header []string, rows [][]string) error {
+func PrintTable(header []string, rows [][]string) error {
 	writer := tabwriter.NewWriter(os.Stdout, 0, 0, 5, ' ', 0)
 	if len(header) > 0 {
 		if err := printTableRow(writer, header); err != nil {

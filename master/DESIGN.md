@@ -1194,8 +1194,7 @@ Body: plugin binary
 {
   "code": 0,
   "msg": "ok",
-  "plugin_unique_id": "wc-...",
-  "plugin_name": "wc"
+  "plugin_unique_id": "wc-..."
 }
 ```
 
@@ -1601,7 +1600,7 @@ const (
 ```go
 const (
     CodeOK = iota
-    CodeUploadPluginPluginUniqueIDInvalid
+    CodeUploadPluginPluginNameInvalid
     CodeDeletePluginPluginNotFound
     CodeFetchJobPluginJobNotFound
     CodeFetchJobPluginJobTerminated

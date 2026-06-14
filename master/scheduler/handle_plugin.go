@@ -31,8 +31,8 @@ type cleanupPluginsInput struct {
 }
 
 type deletePluginInput struct {
-	PluginUnique string
-	C            chan deletePluginOutput
+	PluginUniqueID string
+	C              chan deletePluginOutput
 }
 
 type listPluginsInput struct {
@@ -101,7 +101,7 @@ func (impl *schedulerImpl) handleRegisterPluginInput(input *registerPluginInput)
 }
 
 func (impl *schedulerImpl) handleDeletePluginInput(input *deletePluginInput) {
-	plugin := impl.pluginStatus[input.PluginUnique]
+	plugin := impl.pluginStatus[input.PluginUniqueID]
 	if plugin == nil {
 		input.C <- deletePluginOutput{}
 		return
@@ -142,11 +142,11 @@ func (impl *schedulerImpl) handleCleanupPluginsInput(input *cleanupPluginsInput)
 		activePluginUniqueIDs[job.PluginUniqueID] = struct{}{}
 	}
 
-	for pluginName, plugin := range impl.pluginStatus {
+	for pluginUniqueID, plugin := range impl.pluginStatus {
 		if plugin.DeletedAt == nil {
 			continue
 		}
-		if _, ok := activePluginUniqueIDs[pluginName]; ok {
+		if _, ok := activePluginUniqueIDs[pluginUniqueID]; ok {
 			continue
 		}
 		if err := os.Remove(plugin.FilePath); err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -157,7 +157,7 @@ func (impl *schedulerImpl) handleCleanupPluginsInput(input *cleanupPluginsInput)
 			input.C <- err
 			return
 		}
-		delete(impl.pluginStatus, pluginName)
+		delete(impl.pluginStatus, pluginUniqueID)
 	}
 	input.C <- nil
 }
@@ -168,10 +168,10 @@ func createPluginNotFoundJobResp() *entity.CreateMapReduceJobOutput {
 	}
 }
 
-func (impl *schedulerImpl) RegisterPlugin(pluginName string, filePath string) bool {
+func (impl *schedulerImpl) RegisterPlugin(pluginUniqueID string, filePath string) bool {
 	c := make(chan bool, 1)
 	impl.registerPluginChan <- &registerPluginInput{
-		PluginUniqueID: pluginName,
+		PluginUniqueID: pluginUniqueID,
 		FilePath:       filePath,
 		C:              c,
 	}
@@ -183,11 +183,11 @@ type deletePluginOutput struct {
 	Err error
 }
 
-func (impl *schedulerImpl) DeletePlugin(pluginName string) (bool, error) {
+func (impl *schedulerImpl) DeletePlugin(pluginUniqueID string) (bool, error) {
 	c := make(chan deletePluginOutput, 1)
 	impl.deletePluginChan <- &deletePluginInput{
-		PluginUnique: pluginName,
-		C:            c,
+		PluginUniqueID: pluginUniqueID,
+		C:              c,
 	}
 	out := <-c
 	return out.Ok, out.Err

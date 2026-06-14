@@ -11,7 +11,7 @@ func (s *Server) registerClientApi() {
 		clientApi.POST("/upload-plugin/:plugin_name", clientapis.UploadPlugin(s.pluginStorePath))
 
 		// 删除插件
-		clientApi.DELETE("/plugin/:plugin_name", clientapis.DeletePlugin(s.pluginStorePath))
+		clientApi.DELETE("/plugin/:plugin_unique_id", clientapis.DeletePlugin(s.pluginStorePath))
 
 		// 获取插件列表
 		clientApi.GET("/plugins/:order", clientapis.ListPlugins())
