@@ -37,9 +37,10 @@ const (
 )
 
 type PluginSpec struct {
-	Type   PluginSpecType
-	URI    string
-	SHA256 string
+	Type           PluginSpecType
+	PluginUniqueID string
+	URI            string
+	SHA256         string
 }
 
 type AssignedTask struct {

@@ -310,7 +310,11 @@ func materializePlugin(spec TaskSpec) (string, error) {
 		}
 		return spec.Assign.Plugin.URI, nil
 	}
-	pluginBytes, err := fetchPluginFromMaster(spec.MasterAddr, spec.Assign.JobID)
+	pluginUniqueID := spec.Assign.Plugin.PluginUniqueID
+	if pluginUniqueID == "" {
+		return "", fmt.Errorf("plugin unique id is empty")
+	}
+	pluginBytes, err := fetchPluginFromMaster(spec.MasterAddr, pluginUniqueID)
 	if err != nil {
 		return "", err
 	}
@@ -324,12 +328,12 @@ func materializePlugin(spec TaskSpec) (string, error) {
 	return pluginPath, nil
 }
 
-func fetchPluginFromMaster(masterAddr string, jobID string) ([]byte, error) {
+func fetchPluginFromMaster(masterAddr string, pluginUniqueID string) ([]byte, error) {
 	base := strings.TrimRight(masterAddr, "/")
 	if base != "" && !strings.Contains(base, "://") {
 		base = "http://" + base
 	}
-	resp, err := http.Get(base + "/worker-api/fetch-job-plugin/" + url.PathEscape(jobID))
+	resp, err := http.Get(base + "/client-api/fetch-plugin/" + url.PathEscape(pluginUniqueID))
 	if err != nil {
 		return nil, err
 	}
@@ -339,7 +343,7 @@ func fetchPluginFromMaster(masterAddr string, jobID string) ([]byte, error) {
 		return nil, readErr
 	}
 	if resp.StatusCode >= 400 {
-		var failure workercall.FetchPluginRespOnFailure
+		var failure workercall.FetchPluginByJobIDRespOnFailure
 		_ = json.Unmarshal(data, &failure)
 		if failure.Code != 0 {
 			return nil, fmt.Errorf("fetch plugin failed: http=%d code=%d msg=%s", resp.StatusCode, failure.Code, failure.Msg)

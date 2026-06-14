@@ -47,7 +47,7 @@ func printWorkers(workers []clientcall.MasterStateWorkerInfo) error {
 			fmt.Sprint(worker.LastSeq),
 			strings.Join(worker.FreeSlots, ","),
 			strings.Join(worker.BusySlots, ","),
-			worker.LastSeen,
+			cli.FormatDisplayTime(worker.LastSeen),
 		})
 	}
 	return cli.PrintTable([]string{"WORKER-ID", "ADDR", "STATE", "EPOCH", "SEQ", "FREE", "BUSY", "LAST-SEEN"}, rows)
@@ -59,7 +59,7 @@ func printPlugins(plugins []clientcall.MasterStatePluginInfo) error {
 		rows = append(rows, []string{
 			plugin.PluginUniqueID,
 			fmt.Sprint(plugin.PinCount),
-			plugin.ModTime,
+			cli.FormatDisplayTime(plugin.ModTime),
 		})
 	}
 	return cli.PrintTable([]string{"PLUGIN-ID", "PINS", "MOD-TIME"}, rows)
@@ -72,7 +72,7 @@ func printStateJobs(jobs []clientcall.MasterStateJobInfo) error {
 			job.JobID,
 			job.JobName,
 			job.Status,
-			job.StartedAt,
+			cli.FormatDisplayTime(job.StartedAt),
 		})
 	}
 	return cli.PrintTable([]string{"JOB-ID", "NAME", "STATUS", "STARTED"}, rows)

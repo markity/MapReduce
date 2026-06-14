@@ -68,9 +68,10 @@ func TaskSlotAssignedFromAssignedTask(task AssignedTask) TaskSlotAssigned {
 
 func pluginSpecFromRpcComm(plugin comm.PluginSpec) PluginSpec {
 	return PluginSpec{
-		Type:   PluginSpecType(plugin.Type),
-		URI:    plugin.URI,
-		SHA256: plugin.SHA256,
+		Type:           PluginSpecType(plugin.Type),
+		PluginUniqueID: plugin.PluginUniqueID,
+		URI:            plugin.URI,
+		SHA256:         plugin.SHA256,
 	}
 }
 

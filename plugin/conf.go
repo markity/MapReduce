@@ -20,6 +20,7 @@ type Configuration interface {
 	GetInt64(key string, defaultValue int64) int64
 	GetBool(key string, defaultValue bool) bool
 	GetStringSlice(key string) []string
+	ToMap() map[string]string
 }
 
 func (c *configuration) Set(key string, val string) error {
@@ -137,6 +138,17 @@ func (c *configuration) GetStringSlice(key string) []string {
 
 func (c *configuration) ToJSONBytes() ([]byte, error) {
 	return json.Marshal(c.values)
+}
+
+func (c *configuration) ToMap() map[string]string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	out := make(map[string]string, len(c.values))
+	for key, value := range c.values {
+		out[key] = value
+	}
+	return out
 }
 
 func NewConfiguration() Configuration {

@@ -13,6 +13,9 @@ func (s *Server) registerClientApi() {
 		// 删除插件
 		clientApi.DELETE("/plugin/:plugin_unique_id", clientapis.DeletePlugin(s.pluginStorePath))
 
+		// 下载插件
+		clientApi.GET("/fetch-plugin/:plugin_unique_id", clientapis.FetchPlugin())
+
 		// 获取插件列表
 		clientApi.GET("/plugins/:order", clientapis.ListPlugins())
 

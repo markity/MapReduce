@@ -1,11 +1,11 @@
-package workerapis
+package clientapis
 
 import (
 	"fmt"
 	"log"
 	"mapreduce/master/scheduler"
 	"mapreduce/rpc/comm"
-	workercall "mapreduce/rpc/master/worker-call"
+	clientcall "mapreduce/rpc/master/client-call"
 	"net/http"
 	"os"
 
@@ -14,29 +14,26 @@ import (
 
 func FetchPlugin() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		jobID := c.Param("job_id")
-		if jobID == "" {
+		pluginUniqueID := c.Param("plugin_unique_id")
+		if pluginUniqueID == "" {
 			c.JSON(http.StatusBadRequest, fetchPluginFailureResp(comm.CodeBadRequest))
 			return
 		}
 
 		fetched := false
 		var pin string
-		output := scheduler.GetScheduler().GetJobPluginFilePathAndPin(jobID, &pin)
+		output := scheduler.GetScheduler().GetPluginFilePathAndPin(pluginUniqueID, &pin)
 		defer func() {
-			if fetched && scheduler.GetScheduler().JobPluginFileUnpin(jobID, pin) != true {
-				log.Println("warn: failed to unpin, check code")
+			if fetched && scheduler.GetScheduler().PluginFileUnpin(pluginUniqueID, pin) != true {
+				log.Println("warn: failed to unpin plugin, check code")
 			}
 		}()
 
 		switch output.Code {
-		case scheduler.GetJobPluginFilePathAndPinCodeOK:
+		case scheduler.GetPluginFilePathCodeOK:
 			fetched = true
-		case scheduler.GetJobPluginFilePathCodeJobAndPinNotFound:
-			c.JSON(http.StatusNotFound, fetchPluginFailureResp(comm.CodeFetchJobPluginJobNotFound))
-			return
-		case scheduler.GetJobPluginFilePathCodeJobAndPinTerminated:
-			c.JSON(http.StatusGone, fetchPluginFailureResp(comm.CodeFetchJobPluginJobTerminated))
+		case scheduler.GetPluginFilePathCodePluginNotFound:
+			c.JSON(http.StatusNotFound, fetchPluginFailureResp(comm.CodeFetchPluginPluginNotFound))
 			return
 		default:
 			c.JSON(http.StatusInternalServerError, fetchPluginFailureResp(comm.CodeInternalError))
@@ -49,15 +46,14 @@ func FetchPlugin() gin.HandlerFunc {
 			return
 		}
 
-		// 因为文件还存在且受pin保护，所以这里不会出错
 		c.Header("Content-Length", fmt.Sprint(s.Size()))
 		c.Header("Content-Type", "application/octet-stream")
 		c.File(output.FilePath)
 	}
 }
 
-func fetchPluginFailureResp(code comm.Code) workercall.FetchPluginByJobIDRespOnFailure {
-	return workercall.FetchPluginByJobIDRespOnFailure{
+func fetchPluginFailureResp(code comm.Code) clientcall.FetchPluginByPluginIDRespOnFailure {
+	return clientcall.FetchPluginByPluginIDRespOnFailure{
 		RespComm: comm.RespComm{
 			Code: code,
 			Msg:  comm.GetMsgFromCode(code),

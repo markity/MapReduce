@@ -57,7 +57,7 @@ func okListPluginsResp(plugins []scheduler.PluginSnapshot) clientcall.ListPlugin
 		pluginUniqueIDs = make([]string, 0)
 	}
 	if pluginInfos == nil {
-		pluginInfos = make([]clientcall.PluginInfo, 0)
+		pluginInfos = make([]clientcall.ListPluginsRespPluginInfoEntry, 0)
 	}
 	return clientcall.ListPluginsResp{
 		RespComm: comm.RespComm{
@@ -69,10 +69,10 @@ func okListPluginsResp(plugins []scheduler.PluginSnapshot) clientcall.ListPlugin
 	}
 }
 
-func pluginInfosFromSnapshots(plugins []scheduler.PluginSnapshot) []clientcall.PluginInfo {
-	out := make([]clientcall.PluginInfo, 0, len(plugins))
+func pluginInfosFromSnapshots(plugins []scheduler.PluginSnapshot) []clientcall.ListPluginsRespPluginInfoEntry {
+	out := make([]clientcall.ListPluginsRespPluginInfoEntry, 0, len(plugins))
 	for _, plugin := range plugins {
-		out = append(out, clientcall.PluginInfo{
+		out = append(out, clientcall.ListPluginsRespPluginInfoEntry{
 			PluginUniqueID: plugin.PluginUniqueID,
 			UploadedAt:     plugin.ModTime.Format(time.RFC3339Nano),
 		})

@@ -20,6 +20,18 @@ type unpinJobPluginInput struct {
 	C         chan bool
 }
 
+type getPluginFilePathAndPinInput struct {
+	PluginUniqueID string
+	PinSecret      *string
+	C              chan GetPluginFilePathOutput
+}
+
+type unpinPluginInput struct {
+	PluginUniqueID string
+	PinSecret      string
+	C              chan bool
+}
+
 type registerPluginInput struct {
 	PluginUniqueID string
 	FilePath       string
@@ -81,6 +93,33 @@ func (impl *schedulerImpl) handleUnpinJobPluginInput(input *unpinJobPluginInput)
 	input.C <- ok
 }
 
+func (impl *schedulerImpl) handleGetPluginFilePathInput(input *getPluginFilePathAndPinInput) {
+	plugin := impl.pluginStatus[input.PluginUniqueID]
+	if !pluginVisible(plugin) {
+		input.C <- GetPluginFilePathOutput{Code: GetPluginFilePathCodePluginNotFound}
+		return
+	}
+	if input.PinSecret != nil {
+		secret := tool.GitLikeRandomHex(32)
+		*input.PinSecret = secret
+		plugin.Pin[secret] = struct{}{}
+	}
+	input.C <- GetPluginFilePathOutput{Code: GetPluginFilePathCodeOK, FilePath: plugin.FilePath}
+}
+
+func (impl *schedulerImpl) handleUnpinPluginInput(input *unpinPluginInput) {
+	plugin := impl.pluginStatus[input.PluginUniqueID]
+	if plugin == nil {
+		input.C <- false
+		return
+	}
+	_, ok := plugin.Pin[input.PinSecret]
+	if ok {
+		delete(plugin.Pin, input.PinSecret)
+	}
+	input.C <- ok
+}
+
 func (impl *schedulerImpl) handleRegisterPluginInput(input *registerPluginInput) {
 	if impl.pluginStatus == nil {
 		impl.pluginStatus = make(map[string]*pluginStatus)
@@ -102,7 +141,7 @@ func (impl *schedulerImpl) handleRegisterPluginInput(input *registerPluginInput)
 
 func (impl *schedulerImpl) handleDeletePluginInput(input *deletePluginInput) {
 	plugin := impl.pluginStatus[input.PluginUniqueID]
-	if plugin == nil {
+	if plugin == nil || plugin.DeletedAt != nil {
 		input.C <- deletePluginOutput{}
 		return
 	}
@@ -212,12 +251,24 @@ type GetJobPluginFilePathOutput struct {
 	Code     GetJobPluginFilePathAndPinCode
 }
 
+type GetPluginFilePathOutput struct {
+	FilePath string
+	Code     GetPluginFilePathCode
+}
+
 type GetJobPluginFilePathAndPinCode int
 
 const (
 	GetJobPluginFilePathAndPinCodeOK GetJobPluginFilePathAndPinCode = iota
 	GetJobPluginFilePathCodeJobAndPinNotFound
 	GetJobPluginFilePathCodeJobAndPinTerminated
+)
+
+type GetPluginFilePathCode int
+
+const (
+	GetPluginFilePathCodeOK GetPluginFilePathCode = iota
+	GetPluginFilePathCodePluginNotFound
 )
 
 func (impl *schedulerImpl) GetJobPluginFilePathAndPin(jobID string, pinSecret *string) GetJobPluginFilePathOutput {
@@ -236,6 +287,26 @@ func (impl *schedulerImpl) JobPluginFileUnpin(jobID string, secret string) bool 
 		JobID:     jobID,
 		PinSecret: secret,
 		C:         c,
+	}
+	return <-c
+}
+
+func (impl *schedulerImpl) GetPluginFilePathAndPin(pluginUniqueID string, pinSecret *string) GetPluginFilePathOutput {
+	c := make(chan GetPluginFilePathOutput, 1)
+	impl.getPluginFilePathAndPinChan <- &getPluginFilePathAndPinInput{
+		PluginUniqueID: pluginUniqueID,
+		PinSecret:      pinSecret,
+		C:              c,
+	}
+	return <-c
+}
+
+func (impl *schedulerImpl) PluginFileUnpin(pluginUniqueID string, secret string) bool {
+	c := make(chan bool, 1)
+	impl.unpinPluginChan <- &unpinPluginInput{
+		PluginUniqueID: pluginUniqueID,
+		PinSecret:      secret,
+		C:              c,
 	}
 	return <-c
 }

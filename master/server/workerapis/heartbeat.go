@@ -2,7 +2,6 @@ package workerapis
 
 import (
 	"fmt"
-	"log"
 	"mapreduce/master/entity"
 	"mapreduce/master/scheduler"
 	"mapreduce/rpc/comm"
@@ -48,55 +47,6 @@ func taskReportStatusToEntity(status rpccomm.TaskReportStatus) entity.TaskReport
 	}
 }
 
-func taskAttemptKeyToEntity(k rpccomm.TaskAttemptKey) entity.TaskAttemptKey {
-	return entity.TaskAttemptKey{
-		JobID:     k.JobID,
-		TaskID:    k.TaskID,
-		AttemptID: k.AttemptID,
-	}
-}
-
-func mapOutputMetaToEntity(output rpccomm.MapOutputMetaEntry) entity.MapOutputMetaEntry {
-	return entity.MapOutputMetaEntry{
-		TaskAttemptKey: taskAttemptKeyToEntity(output.TaskAttemptKey),
-		WorkerUniqueID: output.WorkerUniqueID,
-		WorkerAddr:     output.WorkerAddr,
-		Size:           output.Size,
-	}
-}
-
-func mapOutputMetaFromEntity(output entity.MapOutputMetaEntry) rpccomm.MapOutputMetaEntry {
-	return rpccomm.MapOutputMetaEntry{
-		TaskAttemptKey: taskAttemptKeyFromEntity(output.TaskAttemptKey),
-		WorkerUniqueID: output.WorkerUniqueID,
-		WorkerAddr:     output.WorkerAddr,
-		Size:           output.Size,
-	}
-}
-func mapOutputMetasFromEntity(outputs []entity.MapOutputMetaEntry) []rpccomm.MapOutputMetaEntry {
-	rpcOutputs := make([]rpccomm.MapOutputMetaEntry, 0, len(outputs))
-	for _, output := range outputs {
-		rpcOutputs = append(rpcOutputs, mapOutputMetaFromEntity(output))
-	}
-	return rpcOutputs
-}
-
-func mapOutputMetasToEntity(outputs []rpccomm.MapOutputMetaEntry) []entity.MapOutputMetaEntry {
-	entityOutputs := make([]entity.MapOutputMetaEntry, 0, len(outputs))
-	for _, output := range outputs {
-		entityOutputs = append(entityOutputs, mapOutputMetaToEntity(output))
-	}
-	return entityOutputs
-}
-
-func mapOutputMetaPtrToEntity(output *rpccomm.MapOutputMetaEntry) *entity.MapOutputMetaEntry {
-	if output == nil {
-		return nil
-	}
-	entityOutput := mapOutputMetaToEntity(*output)
-	return &entityOutput
-}
-
 func mapTaskFromEntity(task *entity.MapTaskSpec) *rpccomm.MapTaskSpec {
 	if task == nil {
 		return nil
@@ -122,25 +72,22 @@ func reduceTaskFromEntity(task *entity.ReduceTaskSpec) *rpccomm.ReduceTaskSpec {
 
 func assignedTaskFromEntity(task entity.AssignedTask) comm.AssignTask {
 	return comm.AssignTask{
-		TaskAttemptKey: rpccomm.TaskAttemptKey{
-			JobID:     task.JobID,
-			TaskID:    task.TaskID,
-			AttemptID: task.AttemptID,
-		},
-		SlotID:     task.SlotID,
-		TaskType:   rpccomm.TaskType(task.TaskType),
-		Plugin:     pluginSpecFromEntity(task.Plugin),
-		Conf:       cloneStringMap(task.Conf),
-		MapTask:    mapTaskFromEntity(task.MapTask),
-		ReduceTask: reduceTaskFromEntity(task.ReduceTask),
+		TaskAttemptKey: taskAttemptKeyFromEntity(task.TaskAttemptKey),
+		SlotID:         task.SlotID,
+		TaskType:       taskTypeFromEntity(task.TaskType),
+		Plugin:         pluginSpecFromEntity(task.Plugin),
+		Conf:           cloneStringMap(task.Conf),
+		MapTask:        mapTaskFromEntity(task.MapTask),
+		ReduceTask:     reduceTaskFromEntity(task.ReduceTask),
 	}
 }
 
 func pluginSpecFromEntity(plugin entity.PluginSpec) rpccomm.PluginSpec {
 	return rpccomm.PluginSpec{
-		Type:   rpccomm.PluginSpecType(plugin.Type),
-		URI:    plugin.URI,
-		SHA256: plugin.SHA256,
+		Type:           rpccomm.PluginSpecType(plugin.Type),
+		PluginUniqueID: plugin.PluginUniqueID,
+		URI:            plugin.URI,
+		SHA256:         plugin.SHA256,
 	}
 }
 
@@ -160,29 +107,13 @@ func cloneStringMap(in map[string]string) map[string]string {
 	return out
 }
 
-func taskTypeToEntity(taskType rpccomm.TaskType) entity.TaskType {
-	switch taskType {
-	case rpccomm.TaskTypeMap:
-		return entity.TaskTypeMap
-	case rpccomm.TaskTypeReduce:
-		return entity.TaskTypeReduce
-	}
-
-	log.Println("warn: taskTypeToEntity, unknowne val" + fmt.Sprint(taskType))
-	return entity.TaskType("")
-}
-
 func runningTaskToEntity(task *rpccomm.TaskSlotStatusReportRunningTask) *entity.TaskSlotAssigned {
 	if task == nil {
 		return nil
 	}
 	return &entity.TaskSlotAssigned{
-		TaskAttemptKey: entity.TaskAttemptKey{
-			JobID:     task.JobID,
-			TaskID:    task.TaskID,
-			AttemptID: task.AttemptID,
-		},
-		TaskType: taskTypeToEntity(task.TaskType),
+		TaskAttemptKey: taskAttemptKeyToEntity(task.TaskAttemptKey),
+		TaskType:       taskTypeToEntity(task.TaskType),
 	}
 }
 
@@ -201,12 +132,8 @@ func taskReportsToEntity(reports []rpccomm.TaskReport, workerUniqueID string, wo
 	entityReports := make([]entity.TaskReport, 0, len(reports))
 	for _, report := range reports {
 		entityReports = append(entityReports, entity.TaskReport{
-			TaskAttemptKey: entity.TaskAttemptKey{
-				JobID:     report.JobID,
-				TaskID:    report.TaskID,
-				AttemptID: report.AttemptID,
-			},
-			TaskType:       entity.TaskType(report.TaskType),
+			TaskAttemptKey: taskAttemptKeyToEntity(report.TaskAttemptKey),
+			TaskType:       taskTypeToEntity(report.TaskType),
 			Status:         taskReportStatusToEntity(report.Status),
 			Error:          report.Error,
 			MapOutput:      mapOutputMetaPtrToEntity(report.MapOutput),
@@ -299,22 +226,6 @@ func validMapOutput(output *rpccomm.MapOutputMetaEntry) bool {
 		return true
 	}
 	return validMapOutputs([]rpccomm.MapOutputMetaEntry{*output})
-}
-
-func taskAttemptKeyFromEntity(k entity.TaskAttemptKey) rpccomm.TaskAttemptKey {
-	return rpccomm.TaskAttemptKey{
-		JobID:     k.JobID,
-		TaskID:    k.TaskID,
-		AttemptID: k.AttemptID,
-	}
-}
-
-func taskAttemptKeysFromEntity(ks []entity.TaskAttemptKey) []rpccomm.TaskAttemptKey {
-	rt := make([]rpccomm.TaskAttemptKey, 0, len(ks))
-	for _, k := range ks {
-		rt = append(rt, taskAttemptKeyFromEntity(k))
-	}
-	return rt
 }
 
 func heartbeatRespFromEntity(resp *entity.HeartbeatOutput) *workercall.HeartbeatResp {

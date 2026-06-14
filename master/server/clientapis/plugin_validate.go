@@ -1,14 +1,18 @@
 package clientapis
 
 import (
+	"context"
 	"fmt"
 	mrplugin "mapreduce/plugin"
 	"os"
-	"plugin"
+	"os/exec"
 	stdplugin "plugin"
+	"strings"
+	"time"
 )
 
 const validatePluginPathEnv = "MAPREDUCE_VALIDATE_PLUGIN_PATH"
+const validatePluginTimeout = 10 * time.Second
 
 func init() {
 	path := os.Getenv(validatePluginPathEnv)
@@ -23,8 +27,27 @@ func init() {
 }
 
 func validatePluginLoadable(path string) error {
-	_, err := plugin.Open(path)
-	return err
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), validatePluginTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, exe)
+	cmd.Env = append(os.Environ(), validatePluginPathEnv+"="+path)
+	out, err := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		return fmt.Errorf("plugin validation timed out")
+	}
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if msg == "" {
+			return err
+		}
+		return fmt.Errorf("%v: %s", err, msg)
+	}
+	return nil
 }
 
 func validatePluginLoadableInProcess(path string) error {

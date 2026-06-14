@@ -10,7 +10,8 @@ const (
 )
 
 type PluginSpec struct {
-	Type   PluginSpecType `json:"type"`
-	URI    string         `json:"uri"`
-	SHA256 string         `json:"sha256"`
+	Type           PluginSpecType `json:"type"`
+	PluginUniqueID string         `json:"plugin_unique_id"`
+	URI            string         `json:"uri"`
+	SHA256         string         `json:"sha256"`
 }

@@ -16,6 +16,8 @@ type Scheduler interface {
 	//	唯一pin的情况就是job还在运行，此时plugin也一定还是没被物理删除的状态，可以pin
 	GetJobPluginFilePathAndPin(jobID string, pinSecret *string) GetJobPluginFilePathOutput
 	JobPluginFileUnpin(jobID string, pinSecret string) bool
+	GetPluginFilePathAndPin(pluginUniqueID string, pinSecret *string) GetPluginFilePathOutput
+	PluginFileUnpin(pluginUniqueID string, pinSecret string) bool
 	RegisterPlugin(string, string) bool
 	DeletePlugin(string) (bool, error)
 	ListPlugins() []PluginSnapshot
@@ -36,7 +38,9 @@ type schedulerImpl struct {
 	// 获得job的filepath，用于fetch plugin blob接口使用
 	getJobPluginFilePathAndPinChan chan *getJobPluginFilePathAndPinInput
 	// unpin plugin
-	unpinJobPluginChan chan *unpinJobPluginInput
+	unpinJobPluginChan          chan *unpinJobPluginInput
+	getPluginFilePathAndPinChan chan *getPluginFilePathAndPinInput
+	unpinPluginChan             chan *unpinPluginInput
 	// 注册新的plugin
 	registerPluginChan chan *registerPluginInput
 	// 删除已有的plugin
@@ -89,6 +93,8 @@ func newSchedulerImpl(plugins []pluginStatus, workerHeartbeatLostIntervalSeconds
 		getMasterStateChan:             make(chan *getMasterStateInput),
 		getJobPluginFilePathAndPinChan: make(chan *getJobPluginFilePathAndPinInput),
 		unpinJobPluginChan:             make(chan *unpinJobPluginInput),
+		getPluginFilePathAndPinChan:    make(chan *getPluginFilePathAndPinInput),
+		unpinPluginChan:                make(chan *unpinPluginInput),
 		registerPluginChan:             make(chan *registerPluginInput),
 		deletePluginChan:               make(chan *deletePluginInput),
 		listPluginsChan:                make(chan *listPluginsInput),
@@ -127,6 +133,10 @@ func (impl *schedulerImpl) runLoopForever() {
 			impl.handleGetJobPluginFilePathInput(getJobPluginFilePathInput)
 		case unpinInput := <-impl.unpinJobPluginChan:
 			impl.handleUnpinJobPluginInput(unpinInput)
+		case getPluginFilePathInput := <-impl.getPluginFilePathAndPinChan:
+			impl.handleGetPluginFilePathInput(getPluginFilePathInput)
+		case unpinPluginInput := <-impl.unpinPluginChan:
+			impl.handleUnpinPluginInput(unpinPluginInput)
 		case registerPluginInput := <-impl.registerPluginChan:
 			impl.handleRegisterPluginInput(registerPluginInput)
 		case deletePluginInput := <-impl.deletePluginChan:

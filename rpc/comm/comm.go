@@ -14,6 +14,7 @@ const (
 	// fetch-job-plugin接口
 	CodeFetchJobPluginJobNotFound
 	CodeFetchJobPluginJobTerminated
+	CodeFetchPluginPluginNotFound
 
 	// create job接口
 	CodeCreateJobPluginNotFound
@@ -37,6 +38,7 @@ var codeToMsg map[Code]string = map[Code]string{
 
 	CodeFetchJobPluginJobNotFound:   "job not found",
 	CodeFetchJobPluginJobTerminated: "job terminated",
+	CodeFetchPluginPluginNotFound:   "plugin not found",
 
 	CodeCreateJobPluginNotFound: "plugin is not found for create job",
 

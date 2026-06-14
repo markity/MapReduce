@@ -24,7 +24,7 @@ func NewCommand(newClient func() *cli.Client) *cobra.Command {
 				for _, plugin := range resp.PluginInfos {
 					rows = append(rows, []string{
 						plugin.PluginUniqueID,
-						plugin.UploadedAt,
+						cli.FormatDisplayTime(plugin.UploadedAt),
 					})
 				}
 			} else {

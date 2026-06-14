@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"os"
 	"text/tabwriter"
+	"time"
 )
+
+const displayTimeLayout = "2006-01-02T15:04:05"
 
 func PrintTable(header []string, rows [][]string) error {
 	writer := tabwriter.NewWriter(os.Stdout, 0, 0, 5, ' ', 0)
@@ -34,4 +37,15 @@ func printTableRow(writer *tabwriter.Writer, values []string) error {
 	}
 	_, err := fmt.Fprintln(writer)
 	return err
+}
+
+func FormatDisplayTime(value string) string {
+	if value == "" {
+		return ""
+	}
+	t, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return value
+	}
+	return t.Format(displayTimeLayout)
 }

@@ -56,6 +56,35 @@ func (c *Client) DoJSON(method string, path string, body []byte, out any) error 
 	return nil
 }
 
+func (c *Client) DoBytes(method string, path string, body []byte) ([]byte, error) {
+	req, err := http.NewRequest(method, c.endpoint(path), bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		var failure comm.RespComm
+		if err := json.Unmarshal(data, &failure); err == nil && failure.Code != 0 {
+			return nil, fmt.Errorf("request failed: http=%d code=%d msg=%s", resp.StatusCode, failure.Code, failure.Msg)
+		}
+		return nil, fmt.Errorf("request failed: http=%d\n%s", resp.StatusCode, string(data))
+	}
+	return data, nil
+}
+
 func (c *Client) endpoint(path string) string {
 	base := strings.TrimRight(c.MasterAddr, "/")
 	if base != "" && !strings.Contains(base, "://") {

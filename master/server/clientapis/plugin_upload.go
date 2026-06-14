@@ -71,7 +71,7 @@ func UploadPlugin(pluginStorePath string) gin.HandlerFunc {
 			_ = os.Remove(tmpPath)
 			c.JSON(http.StatusBadRequest, comm.RespComm{
 				Code: comm.CodeBadRequest,
-				Msg:  "cannot load plugin",
+				Msg:  "cannot load plugin: " + err.Error(),
 			})
 			return
 		}
