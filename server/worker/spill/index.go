@@ -46,6 +46,10 @@ func writeIndex(path string, index []PartitionIndex) error {
 	return writer.Flush()
 }
 
+func WriteIndex(path string, index []PartitionIndex) error {
+	return writeIndex(path, index)
+}
+
 func readIndex(path string, numPartitions int) ([]PartitionIndex, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -80,4 +84,8 @@ func readIndex(path string, numPartitions int) ([]PartitionIndex, error) {
 	}
 
 	return index, nil
+}
+
+func ReadIndex(path string, numPartitions int) ([]PartitionIndex, error) {
+	return readIndex(path, numPartitions)
 }

@@ -111,12 +111,13 @@ func (impl *schedulerImpl) startTaskProcess(assign entity.TaskSlotAssigned) (*ta
 	stderrPath := filepath.Join(attemptDir, "stderr.log")
 
 	spec := runner.TaskSpec{
-		Assign:         assign,
-		AttemptDir:     attemptDir,
-		ReportPath:     reportPath,
-		MasterAddr:     impl.Cfg.MasterAddr,
-		WorkerUniqueID: impl.Cfg.WorkerUniqueID,
-		WorkerAddr:     impl.Cfg.AdvertiseAddr,
+		Assign:              assign,
+		AttemptDir:          attemptDir,
+		ReportPath:          reportPath,
+		MasterAddr:          impl.Cfg.MasterAddr,
+		WorkerUniqueID:      impl.Cfg.WorkerUniqueID,
+		WorkerAddr:          impl.Cfg.AdvertiseAddr,
+		MapSpillBufferBytes: impl.Cfg.MapSpillBufferBytes(),
 	}
 	specData, err := json.MarshalIndent(spec, "", "  ")
 	if err != nil {

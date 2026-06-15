@@ -77,6 +77,10 @@ func readRecord(r io.Reader) (DiskRecord, error) {
 	}, nil
 }
 
+func ReadRecord(r io.Reader) (DiskRecord, error) {
+	return readRecord(r)
+}
+
 func writeAll(w io.Writer, p []byte) (int, error) {
 	n, err := w.Write(p)
 	if err == nil && n != len(p) {

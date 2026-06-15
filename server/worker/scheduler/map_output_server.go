@@ -1,12 +1,18 @@
 package scheduler
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
+	"io"
 	"log"
+	"mapreduce/server/worker/entity"
+	"mapreduce/server/worker/spill"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -42,27 +48,74 @@ func (impl *schedulerImpl) handleFetchMapOutput(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	outputPath, ok := impl.mapOutputPartitionPath(parts[0], parts[1], parts[2], parts[3])
+	attempt, partitionID, ok := parseMapOutputRequest(parts[0], parts[1], parts[2], parts[3])
 	if !ok {
 		http.Error(w, "bad map output params", http.StatusBadRequest)
 		return
 	}
-	http.ServeFile(w, r, outputPath)
+	if err := impl.serveMapOutputPartition(w, attempt, partitionID); err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+	}
 }
 
-func (impl *schedulerImpl) mapOutputPartitionPath(jobID string, taskID string, attemptID string, partitionID string) (string, bool) {
+func parseMapOutputRequest(jobID string, taskID string, attemptID string, partitionID string) (entity.TaskAttemptKey, int, bool) {
 	if !safePathSegment(jobID) || !safePathSegment(taskID) || !safePathSegment(attemptID) || !safePathSegment(partitionID) {
-		return "", false
+		return entity.TaskAttemptKey{}, 0, false
 	}
-	attemptDir, ok := impl.attemptLocalDataDirFromParts(jobID, taskID, attemptID)
+	partition, err := strconv.Atoi(partitionID)
+	if err != nil || partition < 0 {
+		return entity.TaskAttemptKey{}, 0, false
+	}
+	return entity.TaskAttemptKey{JobID: jobID, TaskID: taskID, AttemptID: attemptID}, partition, true
+}
+
+func (impl *schedulerImpl) serveMapOutputPartition(w http.ResponseWriter, attempt entity.TaskAttemptKey, partitionID int) error {
+	reader, length, err := impl.openMapOutputPartition(attempt, partitionID)
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+	if length == 0 {
+		return nil
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	_, err = io.CopyN(w, reader, length)
+	return err
+}
+
+func (impl *schedulerImpl) openMapOutputPartition(attempt entity.TaskAttemptKey, partitionID int) (io.ReadCloser, int64, error) {
+	outputPath, ok := impl.mapOutputPath(attempt)
+	if !ok {
+		return nil, 0, fmt.Errorf("bad map output attempt")
+	}
+	index, err := spill.ReadIndex(outputPath+".index", 0)
+	if err != nil {
+		return nil, 0, err
+	}
+	if partitionID >= len(index) {
+		return nil, 0, fmt.Errorf("partition %d out of range", partitionID)
+	}
+	item := index[partitionID]
+	if item.Length == 0 {
+		return io.NopCloser(bytes.NewReader(nil)), 0, nil
+	}
+	file, err := os.Open(outputPath)
+	if err != nil {
+		return nil, 0, err
+	}
+	if _, err := file.Seek(item.Offset, io.SeekStart); err != nil {
+		_ = file.Close()
+		return nil, 0, err
+	}
+	return file, item.Length, nil
+}
+
+func (impl *schedulerImpl) mapOutputPath(attempt entity.TaskAttemptKey) (string, bool) {
+	attemptDir, ok := impl.attemptLocalDataDir(attempt)
 	if !ok {
 		return "", false
 	}
-	return filepath.Join(attemptDir, mapOutputPartitionFileName(partitionID)), true
-}
-
-func mapOutputPartitionFileName(partitionID string) string {
-	return "partition-" + partitionID
+	return filepath.Join(attemptDir, "map.out"), true
 }
 
 var ensureDirMu sync.Mutex

@@ -1,8 +1,6 @@
 package runner
 
 import (
-	"bufio"
-	"bytes"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -12,6 +10,8 @@ import (
 	mrplugin "mapreduce/plugin"
 	workercall "mapreduce/rpc/master/worker-call"
 	"mapreduce/server/worker/entity"
+	"mapreduce/server/worker/spill"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -29,8 +29,9 @@ type TaskSpec struct {
 	// 若插件在master处，需向master拉取plugin
 	MasterAddr string `json:"master_addr"`
 	// 这些信息抄写进入task_report文件中
-	WorkerUniqueID string `json:"worker_unique_id"`
-	WorkerAddr     string `json:"worker_addr"`
+	WorkerUniqueID      string `json:"worker_unique_id"`
+	WorkerAddr          string `json:"worker_addr"`
+	MapSpillBufferBytes int64  `json:"map_spill_buffer_bytes"`
 }
 
 type loadedPlugin struct {
@@ -185,18 +186,22 @@ func executeMap(spec TaskSpec, loaded *loadedPlugin) error {
 	if mapper == nil {
 		return fmt.Errorf("plugin mapper is nil")
 	}
-	ctx, err := newMapContext(spec.AttemptDir, spec.Assign.MapTask.NumReduce, loaded)
+	ctx, err := newMapContext(spec.AttemptDir, spec.Assign.MapTask.NumReduce, spec.MapSpillBufferBytes, loaded)
 	if err != nil {
 		return err
 	}
-	defer ctx.Close()
 	for reader.Next() {
 		key, value := reader.Record()
 		if err := mapper.Map(key, value, ctx); err != nil {
+			_ = ctx.Close()
 			return err
 		}
 	}
-	return reader.Err()
+	if err := reader.Err(); err != nil {
+		_ = ctx.Close()
+		return err
+	}
+	return ctx.Close()
 }
 
 func executeReduce(spec TaskSpec, loaded *loadedPlugin) error {
@@ -260,8 +265,15 @@ func fetchOneMapOutputPartition(output entity.MapOutputMetaEntry, partitionID in
 		return err
 	}
 	defer dst.Close()
-	_, err = io.Copy(dst, resp.Body)
-	return err
+	n, err := io.Copy(dst, resp.Body)
+	if err != nil {
+		return err
+	}
+	index := []spill.PartitionIndex{{Offset: -1}}
+	if n > 0 {
+		index[0] = spill.PartitionIndex{Offset: 0, Length: n}
+	}
+	return spill.WriteIndex(dstPath+".index", index)
 }
 
 func mapOutputURL(workerAddr string, jobID string, taskID string, attemptID string, partitionID int) string {
@@ -386,54 +398,42 @@ func verifyBytesSHA256(data []byte, expected string) error {
 }
 
 func mapOutputSize(attemptDir string, numReduce int) (int64, error) {
-	var total int64
-	for partitionID := 0; partitionID < numReduce; partitionID++ {
-		path := filepath.Join(attemptDir, fmt.Sprintf("partition-%d", partitionID))
-		info, err := os.Stat(path)
-		if err != nil {
-			return 0, err
-		}
-		total += info.Size()
+	info, err := os.Stat(filepath.Join(attemptDir, "map.out"))
+	if err != nil {
+		return 0, err
 	}
-	return total, nil
+	return info.Size(), nil
 }
 
 type mapContext struct {
 	conf       mrplugin.Configuration
-	hashFunc   func([]byte) int64
-	partitions []*os.File
+	attemptDir string
+	buffer     *spill.MapOutputBuffer
 }
 
-func newMapContext(attemptDir string, numReduce int, loaded *loadedPlugin) (*mapContext, error) {
+func newMapContext(attemptDir string, numReduce int, spillBufferBytes int64, loaded *loadedPlugin) (*mapContext, error) {
 	if numReduce <= 0 {
 		return nil, fmt.Errorf("num reduce must be positive")
 	}
-	partitions := make([]*os.File, 0, numReduce)
-	for partitionID := 0; partitionID < numReduce; partitionID++ {
-		path := filepath.Join(attemptDir, fmt.Sprintf("partition-%d", partitionID))
-		file, err := os.Create(path)
-		if err != nil {
-			for _, opened := range partitions {
-				_ = opened.Close()
-			}
-			return nil, err
-		}
-		partitions = append(partitions, file)
+	if spillBufferBytes <= 0 {
+		spillBufferBytes = 64 << 20
+	}
+	if spillBufferBytes > int64(math.MaxInt) {
+		return nil, fmt.Errorf("map spill buffer is too large: %d", spillBufferBytes)
 	}
 	hashFunc := loaded.Plugin.HashFunc()
 	if hashFunc == nil {
 		hashFunc = defaultHash
 	}
-	return &mapContext{conf: loaded.Conf, hashFunc: hashFunc, partitions: partitions}, nil
+	buffer, err := spill.NewMapOutputBuffer(filepath.Join(attemptDir, "spill"), int(spillBufferBytes), numReduce, hashFunc)
+	if err != nil {
+		return nil, err
+	}
+	return &mapContext{conf: loaded.Conf, attemptDir: attemptDir, buffer: buffer}, nil
 }
 
 func (ctx *mapContext) Write(key []byte, value []byte) error {
-	partitionID := int(ctx.hashFunc(key) % int64(len(ctx.partitions)))
-	if partitionID < 0 {
-		partitionID = -partitionID
-	}
-	_, err := fmt.Fprintf(ctx.partitions[partitionID], "%s\t%s\n", string(key), string(value))
-	return err
+	return ctx.buffer.Emit(key, value)
 }
 
 func (ctx *mapContext) Configuration() mrplugin.Configuration {
@@ -441,13 +441,11 @@ func (ctx *mapContext) Configuration() mrplugin.Configuration {
 }
 
 func (ctx *mapContext) Close() error {
-	var firstErr error
-	for _, file := range ctx.partitions {
-		if err := file.Close(); err != nil && firstErr == nil {
-			firstErr = err
-		}
+	if _, err := ctx.buffer.Finish(filepath.Join(ctx.attemptDir, "map.out"), filepath.Join(ctx.attemptDir, "map.out.index")); err != nil {
+		_ = ctx.buffer.Cleanup()
+		return err
 	}
-	return firstErr
+	return ctx.buffer.Cleanup()
 }
 
 type reduceContext struct {
@@ -486,32 +484,34 @@ func readReduceInputs(inputDir string) (map[string]reduceGroup, error) {
 	if err != nil {
 		return nil, err
 	}
-	groups := make(map[string]reduceGroup)
+	paths := make([]string, 0, len(entries))
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
 		}
-		if err := readReduceInputFile(filepath.Join(inputDir, entry.Name()), groups); err != nil {
-			return nil, err
-		}
-	}
-	return groups, nil
-}
-
-func readReduceInputFile(path string, groups map[string]reduceGroup) error {
-	file, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		key, value, found := bytes.Cut(scanner.Bytes(), []byte("\t"))
-		if !found {
+		name := entry.Name()
+		if strings.HasSuffix(name, ".index") {
 			continue
 		}
-		keyBytes := append([]byte(nil), key...)
-		valueBytes := append([]byte(nil), value...)
+		paths = append(paths, filepath.Join(inputDir, name))
+	}
+	reader, err := spill.NewMergeReader(paths)
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+	groups := make(map[string]reduceGroup)
+	for {
+		ok, err := reader.Next()
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return groups, nil
+		}
+		rec := reader.Record()
+		keyBytes := rec.Key
+		valueBytes := rec.Value
 		groupKey := string(keyBytes)
 		group := groups[groupKey]
 		if group.key == nil {
@@ -520,7 +520,6 @@ func readReduceInputFile(path string, groups map[string]reduceGroup) error {
 		group.values = append(group.values, valueBytes)
 		groups[groupKey] = group
 	}
-	return scanner.Err()
 }
 
 func defaultHash(key []byte) int64 {
