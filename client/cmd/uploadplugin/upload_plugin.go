@@ -26,7 +26,7 @@ func NewCommand(newClient func() *cli.Client) *cobra.Command {
 				return err
 			}
 			var resp clientcall.UploadPluginResp
-			if err := newClient().DoJSON(http.MethodPost, "/client-api/upload-plugin/"+url.PathEscape(pluginName), data, &resp); err != nil {
+			if err := newClient().DoBinary(http.MethodPost, "/client-api/upload-plugin/"+url.PathEscape(pluginName), data, &resp); err != nil {
 				return err
 			}
 			return cli.PrintTable([]string{"STATUS", "PLUGIN-ID"}, [][]string{{

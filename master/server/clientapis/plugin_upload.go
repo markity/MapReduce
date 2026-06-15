@@ -1,7 +1,9 @@
 package clientapis
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"io"
 	"mapreduce/master/scheduler"
 	"mapreduce/rpc/comm"
@@ -9,8 +11,10 @@ import (
 	"mapreduce/tool"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/gin-gonic/gin"
@@ -18,10 +22,35 @@ import (
 
 const randomPluginNameSuffixBytes = 32
 
+const validatePluginTimeout = 10 * time.Second
+
+func validatePluginLoadable(path string) error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), validatePluginTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, exe, "check-plugin-loadable", path)
+	out, err := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		return fmt.Errorf("plugin validation timed out")
+	}
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if msg == "" {
+			return err
+		}
+		return fmt.Errorf("%v: %s", err, msg)
+	}
+	return nil
+}
+
 func UploadPlugin(pluginStorePath string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		pluginUniqueIDPrefix := sanitizePathPart(c.Param("plugin_name"))
-		if pluginUniqueIDPrefix == "" {
+		pluginName := sanitizePathPart(c.Param("plugin_name"))
+		if pluginName == "" {
 			c.JSON(http.StatusBadRequest, comm.RespComm{
 				Code: comm.CodeBadRequest,
 				Msg:  comm.GetMsgFromCode(comm.CodeBadRequest),
@@ -37,7 +66,15 @@ func UploadPlugin(pluginStorePath string) gin.HandlerFunc {
 			return
 		}
 
-		generatedPluginUniqueID, path, err := newPluginPath(pluginStorePath, pluginUniqueIDPrefix)
+		uploadTmpFileName := tool.GitLikeRandomHex(32) + ".uploading"
+
+		uploadTmpFIlePath, ok := pluginPath(pluginStorePath, uploadTmpFileName)
+		if !ok {
+			panic("unexpected")
+		}
+
+		// tmpPath := path + ".tmp"
+		uploadTmpFile, err := os.OpenFile(uploadTmpFIlePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, comm.RespComm{
 				Code: comm.CodeInternalError,
@@ -45,21 +82,12 @@ func UploadPlugin(pluginStorePath string) gin.HandlerFunc {
 			})
 			return
 		}
+		defer uploadTmpFile.Close()
+		defer os.Remove(uploadTmpFIlePath)
 
-		tmpPath := path + ".tmp"
-		file, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, comm.RespComm{
-				Code: comm.CodeInternalError,
-				Msg:  comm.GetMsgFromCode(comm.CodeInternalError),
-			})
-			return
-		}
-
-		_, copyErr := io.Copy(file, c.Request.Body)
-		closeErr := file.Close()
+		_, copyErr := io.Copy(uploadTmpFile, c.Request.Body)
+		closeErr := uploadTmpFile.Close()
 		if copyErr != nil || closeErr != nil {
-			_ = os.Remove(tmpPath)
 			c.JSON(http.StatusInternalServerError, comm.RespComm{
 				Code: comm.CodeInternalError,
 				Msg:  comm.GetMsgFromCode(comm.CodeInternalError),
@@ -67,8 +95,7 @@ func UploadPlugin(pluginStorePath string) gin.HandlerFunc {
 			return
 		}
 
-		if err := validatePluginLoadable(tmpPath); err != nil {
-			_ = os.Remove(tmpPath)
+		if err := validatePluginLoadable(uploadTmpFIlePath); err != nil {
 			c.JSON(http.StatusBadRequest, comm.RespComm{
 				Code: comm.CodeBadRequest,
 				Msg:  "cannot load plugin: " + err.Error(),
@@ -76,16 +103,19 @@ func UploadPlugin(pluginStorePath string) gin.HandlerFunc {
 			return
 		}
 
-		if err := os.Rename(tmpPath, path); err != nil {
-			_ = os.Remove(tmpPath)
+		pluginUniqueID := scheduler.GetScheduler().RegisterPlugin(pluginName)
+		if pluginUniqueID == "" {
 			c.JSON(http.StatusInternalServerError, comm.RespComm{
 				Code: comm.CodeInternalError,
 				Msg:  comm.GetMsgFromCode(comm.CodeInternalError),
 			})
 			return
 		}
-		if !scheduler.GetScheduler().RegisterPlugin(generatedPluginUniqueID, path) {
-			_ = os.Remove(path)
+		pluginPath, ok := pluginPath(pluginStorePath, pluginUniqueID)
+		if !ok {
+			panic("unexpected")
+		}
+		if err := os.Rename(uploadTmpFIlePath, pluginPath); err != nil {
 			c.JSON(http.StatusInternalServerError, comm.RespComm{
 				Code: comm.CodeInternalError,
 				Msg:  comm.GetMsgFromCode(comm.CodeInternalError),
@@ -98,12 +128,12 @@ func UploadPlugin(pluginStorePath string) gin.HandlerFunc {
 				Code: comm.CodeOK,
 				Msg:  comm.GetMsgFromCode(comm.CodeOK),
 			},
-			PluginUniqueID: generatedPluginUniqueID,
+			PluginUniqueID: pluginUniqueID,
 		})
 	}
 }
 
-func newPluginPath(pluginStorePath string, pluginUniqueIDPrefix string) (string, string, error) {
+func generatePluginUniqueIDAndReturnsPath(pluginStorePath string, pluginUniqueIDPrefix string) (string, string, error) {
 	for i := 0; i < 16; i++ {
 		generatedPluginUniqueID := pluginUniqueIDPrefix + "-" + tool.GitLikeRandomHex(32)
 		path, ok := pluginPath(pluginStorePath, generatedPluginUniqueID)
@@ -119,11 +149,11 @@ func newPluginPath(pluginStorePath string, pluginUniqueIDPrefix string) (string,
 	return "", "", errors.New("failed to allocate plugin unique id")
 }
 
-func pluginPath(pluginStorePath string, pluginUniqueID string) (string, bool) {
-	if !isSafePathPart(pluginUniqueID) {
+func pluginPath(pluginStorePath string, fileName string) (string, bool) {
+	if !isSafePathPart(fileName) {
 		return "", false
 	}
-	path := filepath.Join(pluginStorePath, pluginUniqueID)
+	path := filepath.Join(pluginStorePath, fileName)
 	cleanStorePath := filepath.Clean(pluginStorePath)
 	cleanPath := filepath.Clean(path)
 	if cleanPath != filepath.Join(cleanStorePath, filepath.Base(cleanPath)) {

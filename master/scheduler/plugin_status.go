@@ -10,10 +10,10 @@ import (
 
 type pluginStatus struct {
 	PluginUniqueID string
-	FilePath       string
-	ModTime        time.Time
-	DeletedAt      *time.Time
-	Pin            map[string]struct{}
+	// FilePath       string
+	ModTime   time.Time
+	DeletedAt *time.Time
+	Pin       map[string]struct{}
 }
 
 type PluginSnapshot struct {
@@ -28,7 +28,10 @@ func pluginSnapshotFromStatus(plugin *pluginStatus) PluginSnapshot {
 	}
 }
 
-const deletedPluginMarkerSuffix = ".deleted"
+const (
+	deletedPluginMarkerSuffix = ".deleted"
+	uploadingPluginSuffix     = ".uploading"
+)
 
 func LoadPluginStatusesFromStore(pluginStorePath string) ([]pluginStatus, error) {
 	entries, err := os.ReadDir(pluginStorePath)
@@ -62,7 +65,6 @@ func LoadPluginStatusesFromStore(pluginStorePath string) ([]pluginStatus, error)
 		}
 		plugins = append(plugins, pluginStatus{
 			PluginUniqueID: entry.Name(),
-			FilePath:       path,
 			ModTime:        info.ModTime(),
 			DeletedAt:      deletedAt,
 			Pin:            make(map[string]struct{}),
@@ -102,5 +104,7 @@ func deletedPluginMarkerPath(pluginFilePath string) string {
 }
 
 func isPluginAuxiliaryFile(fileName string) bool {
-	return strings.Contains(fileName, ".tmp-") || strings.HasSuffix(fileName, deletedPluginMarkerSuffix)
+	return strings.Contains(fileName, ".tmp-") ||
+		strings.HasSuffix(fileName, deletedPluginMarkerSuffix) ||
+		strings.HasSuffix(fileName, uploadingPluginSuffix)
 }

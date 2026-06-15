@@ -5,8 +5,9 @@ import (
 	"testing"
 )
 
-func newRegressionScheduler() *schedulerImpl {
-	return newSchedulerImpl(nil, 10)
+func newRegressionScheduler(t *testing.T) *schedulerImpl {
+	t.Helper()
+	return newSchedulerImpl(nil, 10, t.TempDir())
 }
 
 func createRegressionJob(t *testing.T, impl *schedulerImpl, splits int, reduces int) *entity.CreateMapReduceJobOutput {
@@ -14,7 +15,6 @@ func createRegressionJob(t *testing.T, impl *schedulerImpl, splits int, reduces 
 	pluginUniqueID := "plugin-regression"
 	impl.pluginStatus[pluginUniqueID] = &pluginStatus{
 		PluginUniqueID: pluginUniqueID,
-		FilePath:       "/tmp/plugin-regression",
 		Pin:            make(map[string]struct{}),
 	}
 	taskSplits := make([]entity.SplitSpec, 0, splits)
@@ -34,7 +34,7 @@ func createRegressionJob(t *testing.T, impl *schedulerImpl, splits int, reduces 
 }
 
 func TestCreateJobInitializesPendingAndMapOutputIndexes(t *testing.T) {
-	impl := newRegressionScheduler()
+	impl := newRegressionScheduler(t)
 	resp := createRegressionJob(t, impl, 2, 1)
 	job := impl.jobStatus[resp.JobID]
 
@@ -70,7 +70,7 @@ func TestCreateJobInitializesPendingAndMapOutputIndexes(t *testing.T) {
 }
 
 func TestFinishInFlightAttemptKeepsSiblingAttempt(t *testing.T) {
-	impl := newRegressionScheduler()
+	impl := newRegressionScheduler(t)
 	resp := createRegressionJob(t, impl, 1, 1)
 	job := impl.jobStatus[resp.JobID]
 	task := job.AllMapTasks["map-0"]
@@ -91,7 +91,7 @@ func TestFinishInFlightAttemptKeepsSiblingAttempt(t *testing.T) {
 }
 
 func TestLostAttemptKeepsSiblingAttemptAndOnlyRequeuesWhenAllAttemptsGone(t *testing.T) {
-	impl := newRegressionScheduler()
+	impl := newRegressionScheduler(t)
 	resp := createRegressionJob(t, impl, 1, 1)
 	job := impl.jobStatus[resp.JobID]
 	task := job.AllMapTasks["map-0"]
@@ -118,7 +118,7 @@ func TestLostAttemptKeepsSiblingAttemptAndOnlyRequeuesWhenAllAttemptsGone(t *tes
 }
 
 func TestMapSuccessStopsSiblingAttemptAndReduceGetsMapOutputs(t *testing.T) {
-	impl := newRegressionScheduler()
+	impl := newRegressionScheduler(t)
 	resp := createRegressionJob(t, impl, 1, 1)
 	job := impl.jobStatus[resp.JobID]
 	task := job.AllMapTasks["map-0"]
@@ -167,7 +167,7 @@ func TestMapSuccessStopsSiblingAttemptAndReduceGetsMapOutputs(t *testing.T) {
 }
 
 func TestWorkerRestartRequeuesRunningAttemptsWithoutPanic(t *testing.T) {
-	impl := newRegressionScheduler()
+	impl := newRegressionScheduler(t)
 	resp := createRegressionJob(t, impl, 1, 1)
 	job := impl.jobStatus[resp.JobID]
 
@@ -203,7 +203,7 @@ func TestWorkerRestartRequeuesRunningAttemptsWithoutPanic(t *testing.T) {
 }
 
 func TestDuplicateHeartbeatSeqIsRejected(t *testing.T) {
-	impl := newRegressionScheduler()
+	impl := newRegressionScheduler(t)
 	_ = createRegressionJob(t, impl, 1, 1)
 	req := &entity.HeartbeatInput{
 		WorkerUniqueID: "worker-1",
@@ -228,7 +228,7 @@ func TestDuplicateHeartbeatSeqIsRejected(t *testing.T) {
 }
 
 func TestMissingReportedSlotIsNotAssignable(t *testing.T) {
-	impl := newRegressionScheduler()
+	impl := newRegressionScheduler(t)
 	_ = createRegressionJob(t, impl, 3, 1)
 
 	first := impl.PostHeartbeatReq(&entity.HeartbeatInput{
@@ -266,7 +266,7 @@ func TestMissingReportedSlotIsNotAssignable(t *testing.T) {
 }
 
 func TestInvalidMapSuccessReportRequeuesMapTask(t *testing.T) {
-	impl := newRegressionScheduler()
+	impl := newRegressionScheduler(t)
 	resp := createRegressionJob(t, impl, 1, 1)
 	job := impl.jobStatus[resp.JobID]
 	task := job.AllMapTasks["map-0"]
@@ -296,7 +296,7 @@ func TestInvalidMapSuccessReportRequeuesMapTask(t *testing.T) {
 }
 
 func TestPluginPinCanUnpinAfterJobTerminal(t *testing.T) {
-	impl := newRegressionScheduler()
+	impl := newRegressionScheduler(t)
 	resp := createRegressionJob(t, impl, 1, 1)
 	job := impl.jobStatus[resp.JobID]
 

@@ -18,7 +18,7 @@ type Scheduler interface {
 	JobPluginFileUnpin(jobID string, pinSecret string) bool
 	GetPluginFilePathAndPin(pluginUniqueID string, pinSecret *string) GetPluginFilePathOutput
 	PluginFileUnpin(pluginUniqueID string, pinSecret string) bool
-	RegisterPlugin(string, string) bool
+	RegisterPlugin(string) string
 	DeletePlugin(string) (bool, error)
 	ListPlugins() []PluginSnapshot
 	CleanupDeletedPlugins() error
@@ -56,6 +56,7 @@ type schedulerImpl struct {
 	nextAttemptSeq uint64
 
 	workerHeartbeatLostInterval time.Duration
+	pluginStorePath             string
 
 	// 下面是状态字段
 
@@ -79,12 +80,12 @@ func GetScheduler() Scheduler {
 	return schedulerInstance
 }
 
-func InitScheduler(plugins []pluginStatus, workerHeartbeatLostIntervalSeconds int) Scheduler {
-	schedulerInstance = newSchedulerImpl(plugins, workerHeartbeatLostIntervalSeconds)
+func InitScheduler(plugins []pluginStatus, workerHeartbeatLostIntervalSeconds int, pluginStorePath string) Scheduler {
+	schedulerInstance = newSchedulerImpl(plugins, workerHeartbeatLostIntervalSeconds, pluginStorePath)
 	return schedulerInstance
 }
 
-func newSchedulerImpl(plugins []pluginStatus, workerHeartbeatLostIntervalSeconds int) *schedulerImpl {
+func newSchedulerImpl(plugins []pluginStatus, workerHeartbeatLostIntervalSeconds int, pluginStorePath string) *schedulerImpl {
 	impl := &schedulerImpl{
 		heartbeatReqInputChan:          make(chan *heartbeatReqInput),
 		createJobInputChan:             make(chan *createMapReduceJobInput),
@@ -100,6 +101,7 @@ func newSchedulerImpl(plugins []pluginStatus, workerHeartbeatLostIntervalSeconds
 		listPluginsChan:                make(chan *listPluginsInput),
 		cleanupPluginsChan:             make(chan *cleanupPluginsInput),
 		workerHeartbeatLostInterval:    time.Second * time.Duration(workerHeartbeatLostIntervalSeconds),
+		pluginStorePath:                pluginStorePath,
 		workerStatus:                   make(map[string]*workerStatus),
 		jobStatus:                      make(map[string]*jobStatus),
 		runnableJobQueue:               list.New(),

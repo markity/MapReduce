@@ -31,29 +31,18 @@ func (c *Client) DoJSON(method string, path string, body []byte, out any) error 
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	return c.doJSONResponse(req, out)
+}
 
-	resp, err := c.HTTPClient.Do(req)
+func (c *Client) DoBinary(method string, path string, body []byte, out any) error {
+	req, err := http.NewRequest(method, c.endpoint(path), bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
+	if body != nil {
+		req.Header.Set("Content-Type", "application/octet-stream")
 	}
-	if len(data) != 0 {
-		if err := json.Unmarshal(data, out); err != nil {
-			return fmt.Errorf("decode response: %w: %s", err, string(data))
-		}
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("request failed: http=%d\n%s", resp.StatusCode, string(data))
-	}
-	if code, ok := responseCode(out); ok && code != comm.CodeOK {
-		return fmt.Errorf("request failed: code=%d msg=%s", code, comm.GetMsgFromCode(code))
-	}
-	return nil
+	return c.doJSONResponse(req, out)
 }
 
 func (c *Client) DoBytes(method string, path string, body []byte) ([]byte, error) {
@@ -83,6 +72,31 @@ func (c *Client) DoBytes(method string, path string, body []byte) ([]byte, error
 		return nil, fmt.Errorf("request failed: http=%d\n%s", resp.StatusCode, string(data))
 	}
 	return data, nil
+}
+
+func (c *Client) doJSONResponse(req *http.Request, out any) error {
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	if len(data) != 0 {
+		if err := json.Unmarshal(data, out); err != nil {
+			return fmt.Errorf("decode response: %w: %s", err, string(data))
+		}
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("request failed: http=%d\n%s", resp.StatusCode, string(data))
+	}
+	if code, ok := responseCode(out); ok && code != comm.CodeOK {
+		return fmt.Errorf("request failed: code=%d msg=%s", code, comm.GetMsgFromCode(code))
+	}
+	return nil
 }
 
 func (c *Client) endpoint(path string) string {

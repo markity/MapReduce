@@ -21,7 +21,7 @@ func NewServer(addr string, pluginStorePath string, pluginCleanupIntervalSeconds
 	if err != nil {
 		log.Printf("load plugins from %s failed: %v", pluginStorePath, err)
 	}
-	scheduler.InitScheduler(plugins, workerHeartbeatLostIntervalSeconds)
+	scheduler.InitScheduler(plugins, workerHeartbeatLostIntervalSeconds, pluginStorePath)
 	s := &Server{
 		engine:                       engine,
 		addr:                         addr,

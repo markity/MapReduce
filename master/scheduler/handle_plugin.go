@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"errors"
+	"log"
 	"mapreduce/master/entity"
 	"mapreduce/tool"
 	"os"
@@ -33,9 +34,8 @@ type unpinPluginInput struct {
 }
 
 type registerPluginInput struct {
-	PluginUniqueID string
-	FilePath       string
-	C              chan bool
+	PluginName string
+	C          chan string
 }
 
 type cleanupPluginsInput struct {
@@ -50,6 +50,8 @@ type deletePluginInput struct {
 type listPluginsInput struct {
 	C chan []PluginSnapshot
 }
+
+const maxPluginIDGenerateAttempts = 16
 
 func (impl *schedulerImpl) handleGetJobPluginFilePathInput(input *getJobPluginFilePathAndPinInput) {
 	job := impl.jobStatus[input.JobID]
@@ -104,7 +106,13 @@ func (impl *schedulerImpl) handleGetPluginFilePathInput(input *getPluginFilePath
 		*input.PinSecret = secret
 		plugin.Pin[secret] = struct{}{}
 	}
-	input.C <- GetPluginFilePathOutput{Code: GetPluginFilePathCodeOK, FilePath: plugin.FilePath}
+	pluginFilePath, ok := tool.JoinPathPath(impl.pluginStorePath, plugin.PluginUniqueID)
+	if !ok {
+		input.C <- GetPluginFilePathOutput{Code: GetPluginFilePathCodePluginNotFound}
+		log.Println("warn: handleGetPluginFilePathInput: JoinPathPath pluginUniqueID not valid for path: " + pluginFilePath)
+		return
+	}
+	input.C <- GetPluginFilePathOutput{Code: GetPluginFilePathCodeOK, FilePath: pluginFilePath}
 }
 
 func (impl *schedulerImpl) handleUnpinPluginInput(input *unpinPluginInput) {
@@ -124,35 +132,62 @@ func (impl *schedulerImpl) handleRegisterPluginInput(input *registerPluginInput)
 	if impl.pluginStatus == nil {
 		impl.pluginStatus = make(map[string]*pluginStatus)
 	}
-	info, err := os.Stat(input.FilePath)
-	if err != nil {
-		input.C <- false
+
+	var pluginUniqueID string
+	for i := 0; i < maxPluginIDGenerateAttempts; i++ {
+		candidate := input.PluginName + "-" + tool.GitLikeRandomHex(32)
+		if _, exists := impl.pluginStatus[candidate]; exists {
+			continue
+		}
+		path, ok := tool.JoinPathPath(impl.pluginStorePath, candidate)
+		if !ok {
+			log.Println("warn: handleRegisterPluginInput: generated plugin unique id is not valid for path: " + candidate)
+			continue
+		}
+		if _, err := os.Stat(path); err == nil {
+			continue
+		} else if !errors.Is(err, os.ErrNotExist) {
+			log.Printf("warn: handleRegisterPluginInput: stat plugin path failed: %v", err)
+			continue
+		}
+		pluginUniqueID = candidate
+		break
+	}
+	if pluginUniqueID == "" {
+		input.C <- ""
 		return
 	}
-	impl.pluginStatus[input.PluginUniqueID] = &pluginStatus{
-		PluginUniqueID: input.PluginUniqueID,
-		FilePath:       input.FilePath,
-		ModTime:        info.ModTime(),
+	impl.pluginStatus[pluginUniqueID] = &pluginStatus{
+		PluginUniqueID: pluginUniqueID,
+		ModTime:        time.Now(),
 		DeletedAt:      nil,
 		Pin:            make(map[string]struct{}),
 	}
-	input.C <- true
+	input.C <- pluginUniqueID
 }
 
 func (impl *schedulerImpl) handleDeletePluginInput(input *deletePluginInput) {
 	plugin := impl.pluginStatus[input.PluginUniqueID]
-	if plugin == nil || plugin.DeletedAt != nil {
+	if !pluginVisible(plugin) {
 		input.C <- deletePluginOutput{}
 		return
 	}
-	if plugin.DeletedAt == nil {
-		now := time.Now()
-		if err := os.WriteFile(deletedPluginMarkerPath(plugin.FilePath), []byte(now.Format(time.RFC3339Nano)), 0o644); err != nil {
-			input.C <- deletePluginOutput{Err: err}
-			return
+	now := time.Now()
+	// 等于 plugin.FilePath + ".deleted"，标记文件被删除，若delete但是机器重启
+	//	内存状态消失，可以用这个文件判断文件是否是被删除的状态
+	filePath, ok := tool.JoinPathPath(impl.pluginStorePath, plugin.PluginUniqueID)
+	if !ok {
+		input.C <- deletePluginOutput{
+			Err: errors.New("plugin unique id is not valid for path: " + plugin.PluginUniqueID),
 		}
-		plugin.DeletedAt = &now
+		log.Println("handleDeletePluginInput: plugin unique id is not valid for path: " + plugin.PluginUniqueID)
+		return
 	}
+	if err := os.WriteFile(deletedPluginMarkerPath(filePath), []byte(now.Format(time.RFC3339Nano)), 0o644); err != nil {
+		input.C <- deletePluginOutput{Err: err}
+		return
+	}
+	plugin.DeletedAt = &now
 	input.C <- deletePluginOutput{Ok: true}
 }
 
@@ -188,11 +223,16 @@ func (impl *schedulerImpl) handleCleanupPluginsInput(input *cleanupPluginsInput)
 		if _, ok := activePluginUniqueIDs[pluginUniqueID]; ok {
 			continue
 		}
-		if err := os.Remove(plugin.FilePath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		filePath, ok := tool.JoinPathPath(impl.pluginStorePath, plugin.PluginUniqueID)
+		if !ok {
+			log.Println("handleDeletePluginInput: plugin unique id is not valid for path: " + plugin.PluginUniqueID)
+			continue
+		}
+		if err := os.Remove(filePath); err != nil && !errors.Is(err, os.ErrNotExist) {
 			input.C <- err
 			return
 		}
-		if err := os.Remove(deletedPluginMarkerPath(plugin.FilePath)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err := os.Remove(deletedPluginMarkerPath(filePath)); err != nil && !errors.Is(err, os.ErrNotExist) {
 			input.C <- err
 			return
 		}
@@ -207,12 +247,11 @@ func createPluginNotFoundJobResp() *entity.CreateMapReduceJobOutput {
 	}
 }
 
-func (impl *schedulerImpl) RegisterPlugin(pluginUniqueID string, filePath string) bool {
-	c := make(chan bool, 1)
+func (impl *schedulerImpl) RegisterPlugin(pluginName string) string {
+	c := make(chan string, 1)
 	impl.registerPluginChan <- &registerPluginInput{
-		PluginUniqueID: pluginUniqueID,
-		FilePath:       filePath,
-		C:              c,
+		PluginName: pluginName,
+		C:          c,
 	}
 	return <-c
 }

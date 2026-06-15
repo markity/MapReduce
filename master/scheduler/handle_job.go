@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"mapreduce/master/entity"
+	"mapreduce/tool"
 	"strconv"
 	"time"
 )
@@ -77,15 +78,14 @@ func (impl *schedulerImpl) handleCreateMapReduceJobInput(input *createMapReduceJ
 		input.C <- createPluginNotFoundJobResp()
 		return
 	}
-	pluginFilePath = plugin.FilePath
+	pluginFilePath, ok := tool.JoinPathPath(impl.pluginStorePath, plugin.PluginUniqueID)
+	if !ok {
+		panic("unexpected")
+	}
 	splits := input.Req.TaskSplits
-	var err error
 	if len(splits) == 0 {
-		splits, err = generateJobSplits(pluginFilePath, input.Req.Conf)
-		if err != nil {
-			input.C <- &entity.CreateMapReduceJobOutput{Code: entity.CreateMapReduceJobCodeInternalError}
-			return
-		}
+		input.C <- &entity.CreateMapReduceJobOutput{Code: entity.CreateMapReduceJobCodeInternalError}
+		return
 	}
 
 	jobID := makeJobID(impl.nextJobSeq)
