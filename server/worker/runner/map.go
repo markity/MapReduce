@@ -105,11 +105,7 @@ func newMapContext(attemptDir string, numReduce int, spillBufferBytes int64, loa
 	if spillBufferBytes > int64(math.MaxInt) {
 		return nil, fmt.Errorf("map spill buffer is too large: %d", spillBufferBytes)
 	}
-	hashFunc := loaded.Plugin.HashFunc()
-	if hashFunc == nil {
-		hashFunc = defaultHash
-	}
-	buffer, err := spill.NewMapOutputBuffer(filepath.Join(attemptDir, "spill"), int(spillBufferBytes), numReduce, hashFunc)
+	buffer, err := spill.NewMapOutputBuffer(filepath.Join(attemptDir, "spill"), int(spillBufferBytes), numReduce, loaded.Plugin.Partitioner())
 	if err != nil {
 		return nil, err
 	}

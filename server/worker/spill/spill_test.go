@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -187,11 +188,9 @@ func TestEmptyFinishWritesEmptyOutputAndEmptyIndex(t *testing.T) {
 	}
 }
 
-func TestEmitUsesCustomHashFunction(t *testing.T) {
+func TestEmitUsesCustomPartitioner(t *testing.T) {
 	tmp := t.TempDir()
-	buf, err := NewMapOutputBuffer(filepath.Join(tmp, "spill"), 128, 3, func([]byte) int64 {
-		return 5
-	})
+	buf, err := NewMapOutputBuffer(filepath.Join(tmp, "spill"), 128, 3, fixedPartitioner{partition: 2})
 	if err != nil {
 		t.Fatalf("NewMapOutputBuffer failed: %v", err)
 	}
@@ -203,20 +202,27 @@ func TestEmitUsesCustomHashFunction(t *testing.T) {
 	}
 }
 
-func TestEmitNormalizesNegativeHashFunction(t *testing.T) {
+func TestEmitRejectsInvalidPartitioner(t *testing.T) {
 	tmp := t.TempDir()
-	buf, err := NewMapOutputBuffer(filepath.Join(tmp, "spill"), 128, 3, func([]byte) int64 {
-		return -1
-	})
+	buf, err := NewMapOutputBuffer(filepath.Join(tmp, "spill"), 128, 3, fixedPartitioner{partition: -1})
 	if err != nil {
 		t.Fatalf("NewMapOutputBuffer failed: %v", err)
 	}
 	if err := buf.Emit([]byte("key"), []byte("value")); err != nil {
-		t.Fatalf("Emit failed: %v", err)
+		if !strings.Contains(err.Error(), "invalid partition") {
+			t.Fatalf("Emit error = %v, want invalid partition", err)
+		}
+		return
 	}
-	if got := buf.meta[0].Partition; got != 2 {
-		t.Fatalf("partition = %d, want 2", got)
-	}
+	t.Fatalf("Emit succeeded, want invalid partition error")
+}
+
+type fixedPartitioner struct {
+	partition int
+}
+
+func (p fixedPartitioner) Partition(key []byte, value []byte, numPartitions int) int {
+	return p.partition
 }
 
 func TestMergeReaderMergesMultipleOutputIndexPairs(t *testing.T) {

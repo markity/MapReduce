@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+
+	mrplugin "mapreduce/plugin"
 )
 
 type MapOutputBuffer struct {
@@ -25,20 +27,18 @@ type MapOutputBuffer struct {
 	spillSeq   int
 	spillFiles []string
 
-	hashFunc func([]byte) int64
+	partitioner mrplugin.Partitioner
 }
 
-func NewMapOutputBuffer(dir string, memLimitBytes int, numPartitions int, hashFun func([]byte) int64) (*MapOutputBuffer, error) {
+func NewMapOutputBuffer(dir string, memLimitBytes int, numPartitions int, partitioner mrplugin.Partitioner) (*MapOutputBuffer, error) {
 	if memLimitBytes <= 0 {
 		return nil, fmt.Errorf("memLimitBytes must be positive")
 	}
 	if numPartitions <= 0 {
 		return nil, fmt.Errorf("numPartitions must be positive")
 	}
-	if hashFun == nil {
-		hashFun = func(key []byte) int64 {
-			return int64(hashPartition(key, numPartitions))
-		}
+	if partitioner == nil {
+		partitioner = defaultPartitioner{}
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
@@ -51,16 +51,16 @@ func NewMapOutputBuffer(dir string, memLimitBytes int, numPartitions int, hashFu
 		kvBuf:         make([]byte, 0, memLimitBytes),
 		meta:          make([]Meta, 0, 1024),
 		spillFiles:    make([]string, 0),
-		hashFunc:      hashFun,
+		partitioner:   partitioner,
 	}, nil
 }
 
 // Emit 模拟 Hadoop Mapper 的 context.write(key, value)。
 // 真实 key/value bytes 写入 kvBuf；meta 记录 offset/length/partition。
 func (b *MapOutputBuffer) Emit(key, value []byte) error {
-	partition := int(b.hashFunc(key) % int64(b.numPartitions))
-	if partition < 0 {
-		partition += b.numPartitions
+	partition := b.partitioner.Partition(key, value, b.numPartitions)
+	if partition < 0 || partition >= b.numPartitions {
+		return fmt.Errorf("partitioner returned invalid partition %d for %d partitions", partition, b.numPartitions)
 	}
 
 	// 直接写入key val到kvBuf，数据没有任何header
@@ -301,4 +301,10 @@ func hashPartition(key []byte, numPartitions int) int {
 	h := fnv.New32a()
 	_, _ = h.Write(key)
 	return int(h.Sum32() % uint32(numPartitions))
+}
+
+type defaultPartitioner struct{}
+
+func (defaultPartitioner) Partition(key []byte, value []byte, numPartitions int) int {
+	return hashPartition(key, numPartitions)
 }
