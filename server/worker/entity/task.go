@@ -14,19 +14,19 @@ const (
 )
 
 type TaskAttemptKey struct {
-	JobID     string
-	TaskID    string
-	AttemptID string
+	JobID     string `json:"job_id"`
+	TaskID    string `json:"task_id"`
+	AttemptID string `json:"attempt_id"`
 }
 
 type TaskSlotAssigned struct {
-	SlotID string
+	SlotID string `json:"slot_id"`
 	TaskAttemptKey
-	TaskType   TaskType
-	Plugin     PluginSpec
-	Conf       map[string]string
-	MapTask    *MapTaskSpec
-	ReduceTask *ReduceTaskSpec
+	TaskType   TaskType          `json:"task_type"`
+	Plugin     PluginSpec        `json:"plugin_spec"`
+	Conf       map[string]string `json:"conf"`
+	MapTask    *MapTaskSpec      `json:"map_task"`
+	ReduceTask *ReduceTaskSpec   `json:"reduce_task"`
 }
 
 type TaskSlotStatus struct {

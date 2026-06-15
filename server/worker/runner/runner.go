@@ -2,6 +2,7 @@ package runner
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -22,12 +23,14 @@ import (
 )
 
 type TaskSpec struct {
-	Assign         entity.TaskSlotAssigned `json:"assign"`
-	AttemptDir     string                  `json:"attempt_dir"`
-	ReportPath     string                  `json:"report_path"`
-	MasterAddr     string                  `json:"master_addr"`
-	WorkerUniqueID string                  `json:"worker_unique_id"`
-	WorkerAddr     string                  `json:"worker_addr"`
+	Assign     entity.TaskSlotAssigned `json:"assign"`
+	AttemptDir string                  `json:"attempt_dir"`
+	ReportPath string                  `json:"report_path"`
+	// 若插件在master处，需向master拉取plugin
+	MasterAddr string `json:"master_addr"`
+	// 这些信息抄写进入task_report文件中
+	WorkerUniqueID string `json:"worker_unique_id"`
+	WorkerAddr     string `json:"worker_addr"`
 }
 
 type loadedPlugin struct {
@@ -188,7 +191,8 @@ func executeMap(spec TaskSpec, loaded *loadedPlugin) error {
 	}
 	defer ctx.Close()
 	for reader.Next() {
-		if err := mapper.Map(reader.Key(), reader.Value(), ctx); err != nil {
+		key, value := reader.Record()
+		if err := mapper.Map(key, value, ctx); err != nil {
 			return err
 		}
 	}
@@ -215,7 +219,8 @@ func executeReduce(spec TaskSpec, loaded *loadedPlugin) error {
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		if err := reducer.Reduce(key, groups[key], ctx); err != nil {
+		group := groups[key]
+		if err := reducer.Reduce(group.key, group.values, ctx); err != nil {
 			return err
 		}
 	}
@@ -471,12 +476,17 @@ func (ctx *reduceContext) Close() error {
 	return ctx.file.Close()
 }
 
-func readReduceInputs(inputDir string) (map[string][]string, error) {
+type reduceGroup struct {
+	key    []byte
+	values [][]byte
+}
+
+func readReduceInputs(inputDir string) (map[string]reduceGroup, error) {
 	entries, err := os.ReadDir(inputDir)
 	if err != nil {
 		return nil, err
 	}
-	groups := make(map[string][]string)
+	groups := make(map[string]reduceGroup)
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -488,7 +498,7 @@ func readReduceInputs(inputDir string) (map[string][]string, error) {
 	return groups, nil
 }
 
-func readReduceInputFile(path string, groups map[string][]string) error {
+func readReduceInputFile(path string, groups map[string]reduceGroup) error {
 	file, err := os.Open(path)
 	if err != nil {
 		return err
@@ -496,11 +506,19 @@ func readReduceInputFile(path string, groups map[string][]string) error {
 	defer file.Close()
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		key, value, ok := strings.Cut(scanner.Text(), "\t")
-		if !ok {
+		key, value, found := bytes.Cut(scanner.Bytes(), []byte("\t"))
+		if !found {
 			continue
 		}
-		groups[key] = append(groups[key], value)
+		keyBytes := append([]byte(nil), key...)
+		valueBytes := append([]byte(nil), value...)
+		groupKey := string(keyBytes)
+		group := groups[groupKey]
+		if group.key == nil {
+			group.key = keyBytes
+		}
+		group.values = append(group.values, valueBytes)
+		groups[groupKey] = group
 	}
 	return scanner.Err()
 }

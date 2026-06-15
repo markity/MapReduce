@@ -6,22 +6,22 @@ import (
 )
 
 type MapTaskSpec struct {
-	NumReduce int
-	Split     SplitSpec
+	NumReduce int       `json:"num_reduce"`
+	Split     SplitSpec `json:"split"`
 }
 
 type SplitSpec struct {
-	SplitType string
-	Data      json.RawMessage
+	SplitType string          `json:"split_type"`
+	Data      json.RawMessage `json:"data"`
 }
 
 type MapOutputMetaEntry struct {
-	WorkerUniqueID string
-	WorkerAddr     string
+	WorkerUniqueID string `json:"worker_unique_id"`
+	WorkerAddr     string `json:"workder_addr"`
 
 	TaskAttemptKey
 
-	Size int64
+	Size int64 `json:"size"`
 }
 
 type ReduceTaskSpec struct {

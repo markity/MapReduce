@@ -21,8 +21,7 @@ type InputFormat interface {
 
 type RecordReader interface {
 	Next() bool
-	Key() string
-	Value() string
+	Record() (key []byte, value []byte)
 	Err() error
 	Close() error
 }
@@ -33,7 +32,7 @@ type MapContext interface {
 }
 
 type Mapper interface {
-	Map(key string, value string, ctx MapContext) error
+	Map(key []byte, value []byte, ctx MapContext) error
 }
 
 type ReduceContext interface {
@@ -42,7 +41,7 @@ type ReduceContext interface {
 }
 
 type Reducer interface {
-	Reduce(key string, values []string, ctx ReduceContext) error
+	Reduce(key []byte, values [][]byte, ctx ReduceContext) error
 }
 
 type JobPlugin interface {
