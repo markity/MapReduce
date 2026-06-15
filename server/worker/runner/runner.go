@@ -166,11 +166,7 @@ func executeMap(spec TaskSpec, loaded *loadedPlugin) error {
 	if inputFormat == nil {
 		return fmt.Errorf("plugin input format is nil")
 	}
-	factory, ok := inputFormat.(mrplugin.SplitFactory)
-	if !ok {
-		return fmt.Errorf("input format does not implement plugin.SplitFactory")
-	}
-	split, err := factory.NewSplit(spec.Assign.MapTask.Split.SplitType)
+	split, err := inputFormat.NewSplit(spec.Assign.MapTask.Split.SplitType)
 	if err != nil {
 		return err
 	}

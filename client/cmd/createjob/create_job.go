@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	stdplugin "plugin"
+	"plugin"
 
 	"github.com/spf13/cobra"
 )
@@ -29,13 +29,12 @@ func NewCommand(newClient func() *cli.Client) *cobra.Command {
 				return fmt.Errorf("--plugin and positive --num-reduce are required")
 			}
 			pluginArgs = append(pluginArgs, args...)
-			pluginFile, cleanup, err := downloadPlugin(newClient(), pluginID)
+			cfg, plg, err := loadPlugin(newClient(), pluginID, pluginArgs)
 			if err != nil {
 				return err
 			}
-			defer cleanup()
 
-			conf, splits, err := buildJobSpec(pluginFile, pluginArgs)
+			conf, splits, err := buildJobSpec(cfg, plg)
 			if err != nil {
 				return err
 			}
@@ -65,47 +64,40 @@ func NewCommand(newClient func() *cli.Client) *cobra.Command {
 	return cmd
 }
 
-func downloadPlugin(client *cli.Client, pluginID string) (string, func(), error) {
+func loadPlugin(client *cli.Client, pluginID string, pluginArgs []string) (mrplugin.Configuration, mrplugin.JobPlugin, error) {
 	data, err := client.DoBytes(http.MethodGet, "/client-api/fetch-plugin/"+url.PathEscape(pluginID), nil)
 	if err != nil {
-		return "", func() {}, err
+		return nil, nil, err
 	}
 	file, err := os.CreateTemp("", "mapreduce-plugin-*.so")
 	if err != nil {
-		return "", func() {}, err
-	}
-	cleanup := func() {
-		_ = os.Remove(file.Name())
-	}
-	if _, err := file.Write(data); err != nil {
-		_ = file.Close()
-		cleanup()
-		return "", func() {}, err
-	}
-	if err := file.Close(); err != nil {
-		cleanup()
-		return "", func() {}, err
-	}
-	return file.Name(), cleanup, nil
-}
-
-func buildJobSpec(pluginFile string, args []string) (map[string]string, []comm.SplitSpec, error) {
-	opened, err := stdplugin.Open(pluginFile)
-	if err != nil {
 		return nil, nil, err
+	}
+	defer file.Close()
+	defer os.Remove(file.Name())
+	if _, err := file.Write(data); err != nil {
+		return nil, nil, err
+	}
+	opened, err := plugin.Open(file.Name())
+	if err != nil {
+		return nil, nil, fmt.Errorf("open plugin failed: %w", err)
 	}
 	sym, err := opened.Lookup("BuildPlugin")
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("BuildPlugin has no BuildPlugin signature: %w", err)
 	}
-	build, ok := sym.(func([]string) (mrplugin.Configuration, mrplugin.JobPlugin, error))
+	buildFunc, ok := sym.(func([]string) (mrplugin.Configuration, mrplugin.JobPlugin, error))
 	if !ok {
 		return nil, nil, fmt.Errorf("BuildPlugin has unexpected signature")
 	}
-	conf, jobPlugin, err := build(args)
+	cfg, plg, err := buildFunc(pluginArgs)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("BuildPlugin failed: %w", err)
 	}
+	return cfg, plg, nil
+}
+
+func buildJobSpec(conf mrplugin.Configuration, jobPlugin mrplugin.JobPlugin) (map[string]string, []comm.SplitSpec, error) {
 	if conf == nil {
 		conf = mrplugin.NewConfiguration()
 	}
@@ -114,7 +106,7 @@ func buildJobSpec(pluginFile string, args []string) (map[string]string, []comm.S
 	}
 	pluginSplits, err := jobPlugin.InputFormat().GetSplits(conf)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("Get Splits failed: %w", err)
 	}
 	splits := make([]comm.SplitSpec, 0, len(pluginSplits))
 	for _, split := range pluginSplits {

@@ -11,14 +11,12 @@ type Split interface {
 type InputFormat interface {
 	GetSplits(conf Configuration) ([]Split, error)
 
+	NewSplit(kind string) (Split, error)
+
 	CreateRecordReader(
 		split Split,
 		conf Configuration,
 	) (RecordReader, error)
-}
-
-type SplitFactory interface {
-	NewSplit(kind string) (Split, error)
 }
 
 type RecordReader interface {
