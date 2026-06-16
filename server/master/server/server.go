@@ -17,7 +17,7 @@ type Server struct {
 
 func NewServer(addr string, pluginStorePath string, pluginCleanupIntervalSeconds int, workerHeartbeatLostIntervalSeconds int) *Server {
 	engine := gin.Default()
-	plugins, err := scheduler.LoadPluginStatusesFromStore(pluginStorePath)
+	plugins, err := scheduler.LoadPluginStatusesFromStore(pluginStorePath, true)
 	if err != nil {
 		log.Printf("load plugins from %s failed: %v", pluginStorePath, err)
 	}

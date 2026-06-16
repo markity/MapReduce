@@ -1,7 +1,9 @@
 package checkpluginloadable
 
 import (
-	"mapreduce/server/master/plugincheck"
+	"fmt"
+	mrplugin "mapreduce/plugin"
+	stdplugin "plugin"
 
 	"github.com/spf13/cobra"
 )
@@ -15,7 +17,22 @@ func NewCommand() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return plugincheck.CheckLoadable(args[0])
+			return checkLoadable(args[0])
 		},
 	}
+}
+
+func checkLoadable(path string) error {
+	opened, err := stdplugin.Open(path)
+	if err != nil {
+		return err
+	}
+	sym, err := opened.Lookup("BuildPlugin")
+	if err != nil {
+		return err
+	}
+	if _, ok := sym.(func([]string) (mrplugin.Configuration, mrplugin.JobPlugin, error)); !ok {
+		return fmt.Errorf("BuildPlugin has unexpected signature")
+	}
+	return nil
 }
